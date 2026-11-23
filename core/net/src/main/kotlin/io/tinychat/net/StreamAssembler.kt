@@ -4,6 +4,24 @@ import io.tinychat.model.Fragment
 import io.tinychat.model.Usage
 
 /**
+ * 流式过程中给界面预览用的增量。
+ *
+ * 只有正文与思考两类：工具块、用量、标题都不参与「字往外冒」的观感。
+ * **拼起来必须能还原落库的正文**——界面先按增量出字，生成结束后再由数据库接管；
+ * 两边对不上，交棒那一帧就会跳字或回退。
+ */
+sealed interface LiveDelta {
+    /** 新的一段思考开始：上一段已经结束，界面要把实时思考清空重来 */
+    data object ThinkStart : LiveDelta
+
+    /** 思考追加 */
+    data class Think(val text: String) : LiveDelta
+
+    /** 正文追加 */
+    data class Text(val text: String) : LiveDelta
+}
+
+/**
  * 流 → 碎片的归并器（M8-1 抽出的协议边界）。
  *
  * 两种协议（Messages / OpenAI Chat）产出的对外形状完全一致：
@@ -33,6 +51,13 @@ interface StreamAssembler {
 
     /** 当前已归并出的碎片（按 ord 升序） */
     fun fragments(): List<Fragment>
+
+    /**
+     * 取走本帧产生的实时增量（界面逐帧出字用）。
+     *
+     * 每帧只发一次、发完即清。默认空实现：不关心实时预览的解码器不必实现。
+     */
+    fun drainLive(into: (LiveDelta) -> Unit) = Unit
 
     /** 流结束时把没配对的工具块落成 WIP（只有 Messages 协议用得到） */
     fun finishUnpairedTools()

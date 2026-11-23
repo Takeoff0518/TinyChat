@@ -262,6 +262,7 @@ fun TinyChatApp() {
                 composable(Routes.CHAT) {
                     ChatScreen(
                         state = chatViewModel.state,
+                        live = chatViewModel.live,
                         hasApiKey = chatViewModel.state.hasApiKey,
                         autoSpeak = chatViewModel.state.autoSpeak,
                         onInputChange = chatViewModel::onInputChange,

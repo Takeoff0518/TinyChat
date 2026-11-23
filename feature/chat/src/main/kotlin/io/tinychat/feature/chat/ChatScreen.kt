@@ -73,6 +73,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -128,6 +129,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import io.tinychat.audio.SpectrumAnalyser
+import io.tinychat.data.chat.LiveStream
 import io.tinychat.designsystem.BubbleShape
 import io.tinychat.designsystem.TcFavicon
 import io.tinychat.designsystem.TcIcons
@@ -165,6 +167,7 @@ import io.tinychat.ui.TcTopBar
 import io.tinychat.ui.tcPressPosition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -178,6 +181,8 @@ import java.time.LocalTime
 @Composable
 fun ChatScreen(
     state: ChatUiState,
+    /** 生成中的实时快照（决策 74）：正在出字的那条直接读它，不等数据库 */
+    live: StateFlow<LiveStream?>,
     hasApiKey: Boolean,
     autoSpeak: Boolean,
     onInputChange: (String) -> Unit,
@@ -316,6 +321,7 @@ fun ChatScreen(
         } else {
             MessageList(
                 state = state,
+                live = live,
                 showUsage = state.showUsage,
                 modifier = Modifier.weight(1f),
                 onEditMessage = onEditMessage,
@@ -442,6 +448,7 @@ private fun Greeting(modifier: Modifier = Modifier) {
 @Composable
 private fun MessageList(
     state: ChatUiState,
+    live: StateFlow<LiveStream?>,
     /** 每轮统计条（M7-3，设置里可关） */
     showUsage: Boolean,
     modifier: Modifier = Modifier,
@@ -474,9 +481,15 @@ private fun MessageList(
 
     // 自动跟随：新增消息、正文变长、思考区展开、键盘弹起让视口变矮，都会重新布局，
     // 因此不再依赖 messages.size —— 流式输出期间也能一直贴着底部。
+    // 已经在底部时不再调滚动：实时出字下这份布局信息每帧都变，无谓的 scrollBy 会把
+    // 一帧里塞进几次测量。
     LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo }.collect {
-            if (following.value && !listState.isScrollInProgress) listState.jumpToBottom()
+        snapshotFlow { listState.layoutInfo }.collect { info ->
+            if (following.value && !listState.isScrollInProgress &&
+                (!info.latestItemVisible() || info.residualToBottom() > 0.5f)
+            ) {
+                listState.jumpToBottom()
+            }
         }
     }
 
@@ -485,8 +498,10 @@ private fun MessageList(
         if (state.messages.isNotEmpty()) following.value = true
     }
 
+    // 「回到底部」只在**用户自己划走**之后出现：跟随中的那一两帧也算「不在底部」，
+    // 不加这个条件就会在生成时一闪一闪，还会盖住正在长出来的最后一行。
     val showToBottom by remember {
-        derivedStateOf { !listState.layoutInfo.isAtLatestBottom() }
+        derivedStateOf { shouldShowToBottom(following.value, listState.layoutInfo.isAtLatestBottom()) }
     }
 
     Box(modifier = modifier.fillMaxWidth()) {
@@ -502,11 +517,20 @@ private fun MessageList(
         ) {
             items(state.messages, key = { it.id }) { message ->
                 val isLatest = message.id == state.messages.lastOrNull()?.id
+                // 只有正在出字的那一条订阅实时快照，别的消息不跟着每帧重组
+                val snapshot = if (message.id == state.liveMessageId) {
+                    live.collectAsState().value
+                } else {
+                    null
+                }
+                val shownText = snapshot?.text ?: message.text
                 MessageRow(
                     message = message,
                     showUsage = showUsage,
+                    liveText = snapshot?.text,
+                    liveThinking = snapshot?.thinking,
                     onTap = { onEditMessage(message) },
-                    onCopyMessage = { clipboard.setText(AnnotatedString(message.text)) },
+                    onCopyMessage = { clipboard.setText(AnnotatedString(shownText)) },
                     onSwitchVersion = { delta -> onSwitchVersion(message.id, delta) },
                     onRegenerate = if (!message.isUser && isLatest) ({ onRegenerate(message) }) else null,
                     onContinue = if (!message.isUser && isLatest && message.canContinue) ({ onContinue(message) }) else null,
@@ -554,11 +578,31 @@ private fun MessageList(
  * 菜单贴在触点正上方（`06` §二）：手指按哪儿，菜单就出现在那儿的正上方，
  * 不会盖住手指，也不会跑到画面左上角去。
  */
+/**
+ * 把正在长出来的思考接到时间轴末尾。
+ *
+ * 最后一项是文字就替换（库里那条只是同一段思考的旧前缀），是工具行就另起一段。
+ * 「思考—搜索—再思考」这种轮次里，新段落开始时旧段落已经落库（工具块往返至少一秒，
+ * 远大于一个落库间隔），所以这里按「替换最后一段」处理即可。
+ */
+private fun List<TimelineItem>.withLiveThinking(thinking: String?): List<TimelineItem> {
+    if (thinking.isNullOrBlank()) return this
+    return if (lastOrNull() is TimelineItem.Text) {
+        dropLast(1) + TimelineItem.Text(thinking)
+    } else {
+        this + TimelineItem.Text(thinking)
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun MessageRow(
     message: ChatMessage,
     showUsage: Boolean,
+    /** 非空 = 这条正在实时出字，用它代替库里的正文（决策 74） */
+    liveText: String? = null,
+    /** 非空 = 正在长出来的思考，贴到时间轴末尾 */
+    liveThinking: String? = null,
     onTap: () -> Unit,
     onCopyMessage: () -> Unit,
     onSwitchVersion: (Int) -> Unit,
@@ -574,6 +618,8 @@ private fun MessageRow(
 ) {
     val palette = TcTheme.palette
     val haptics = LocalHapticFeedback.current
+    // 实时出字时用内存快照里的正文（继续生成时已经接上了原有内容），否则用库里的
+    val bodyText = liveText ?: message.text
 
     // 长按菜单（决策 44）：记下按下的位置与所在节点的坐标，菜单出现在手指正上方。
     // 用户消息与 AI 消息各占一个分支，同一时刻只有一个节点在写这两个值。
@@ -717,22 +763,24 @@ private fun MessageRow(
                     .tcPressPosition { pressPos = it }
                     .combinedClickable(onClick = {}, onLongClick = { openMenuAtPress() }),
             ) {
-                if (message.hasThinking) {
+                val liveTimeline = message.timeline.withLiveThinking(liveThinking)
+                if (liveTimeline.isNotEmpty()) {
                     ThinkingBlock(
-                        timeline = message.timeline,
+                        timeline = liveTimeline,
                         seconds = message.thinkingSeconds,
-                        inProgress = message.isThinking,
-                        stopped = message.status == MessageStatus.INCOMPLETE && message.text.isBlank(),
+                        inProgress = message.isThinking || liveThinking != null,
+                        stopped = message.status == MessageStatus.INCOMPLETE && bodyText.isBlank(),
                         onOpenTool = { toolSheet = it },
                     )
                     Spacer(Modifier.height(8.dp))
                 }
 
-                if (message.text.isNotBlank()) {
-                    // 正文走 Markdown（M2-1/2/3）：流式期间按渲染耗时节流出帧，禁止整篇重解析
+                if (bodyText.isNotBlank()) {
+                    // 正文走 Markdown（M2-1/2/3）：流式期间按渲染耗时节流出帧，禁止整篇重解析。
+                    // 实时的正文来自内存快照，库里的那条只是生成结束后的接管者。
                     TcMarkdown(
-                        content = message.text,
-                        streaming = message.status == MessageStatus.WIP,
+                        content = bodyText,
+                        streaming = message.status == MessageStatus.WIP || liveText != null,
                         citations = message.anchors.map { CitationAnchor(it.anchor, it.index) },
                         onCitationClick = { sourcesOpen = true },
                     )
@@ -752,7 +800,7 @@ private fun MessageRow(
             // 可见性规则抽到 resolveFooterState()，单测覆盖（手动停止也要给全三件）
             val footer = resolveFooterState(
                 status = message.status,
-                hasText = message.text.isNotBlank(),
+                hasText = bodyText.isNotBlank(),
                 versionCount = message.versionCount,
                 isLatest = onRegenerate != null,
                 canContinue = onContinue != null,

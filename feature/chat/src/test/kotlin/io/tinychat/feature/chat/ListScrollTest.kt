@@ -95,6 +95,24 @@ class ListScrollTest {
         assertEquals(false, info.isAtLatestBottom())
     }
 
+    // —— 决策 74：「回到底部」的显示条件 ——
+
+    @Test
+    fun `跟随中的那一两帧不显示按钮`() {
+        // 正文刚长出来、滚动还没补上的那一帧：确实不在底部，但用户没走开，不该弹按钮
+        assertEquals(false, shouldShowToBottom(following = true, atBottom = false))
+    }
+
+    @Test
+    fun `用户自己划走之后才显示按钮`() {
+        assertEquals(true, shouldShowToBottom(following = false, atBottom = false))
+    }
+
+    @Test
+    fun `划回底部后按钮消失`() {
+        assertEquals(false, shouldShowToBottom(following = false, atBottom = true))
+    }
+
     private fun layout(
         viewportEndOffset: Int,
         totalItemsCount: Int,

@@ -82,6 +82,14 @@ class OpenAiStreamAssembler : StreamAssembler {
         }
     }
 
+    /** 本帧产生的实时增量，交给上层逐帧出字；读完即清 */
+    private val liveQueue = ArrayList<LiveDelta>(2)
+
+    override fun drainLive(into: (LiveDelta) -> Unit) {
+        for (delta in liveQueue) into(delta)
+        liveQueue.clear()
+    }
+
     override fun fragments(): List<Fragment> {
         val list = ArrayList<Fragment>(2)
         thinkOrd?.let { ord -> think?.let { list += Fragment(messageId = 0, ord = ord, payload = ThinkPayload(it.toString())) } }
@@ -98,8 +106,10 @@ class OpenAiStreamAssembler : StreamAssembler {
         val builder = think ?: StringBuilder().also {
             think = it
             thinkOrd = nextOrd++
+            liveQueue += LiveDelta.ThinkStart
         }
         builder.append(text)
+        liveQueue += LiveDelta.Think(text)
     }
 
     private fun appendResponse(text: String) {
@@ -109,6 +119,7 @@ class OpenAiStreamAssembler : StreamAssembler {
             responseOrd = nextOrd++
         }
         builder.append(text)
+        liveQueue += LiveDelta.Text(text)
     }
 
     private fun stopReasonOf(finish: String): StopReason = when (finish) {

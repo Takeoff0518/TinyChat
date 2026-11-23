@@ -128,6 +128,14 @@ class MessageAssembler(
         }
     }
 
+    /** 本帧产生的实时增量，交给上层逐帧出字；读完即清 */
+    private val liveQueue = ArrayList<LiveDelta>(2)
+
+    override fun drainLive(into: (LiveDelta) -> Unit) {
+        for (delta in liveQueue) into(delta)
+        liveQueue.clear()
+    }
+
     /** 归并结果：按 ord 升序，跳过空洞 */
     override fun fragments(): List<Fragment> {
         val out = ArrayList<Fragment>(slots.size)
@@ -163,6 +171,8 @@ class MessageAssembler(
                 thinkingBlocks++
                 val slot = newSlot(ThinkPayload(content = ""))
                 slotByBlockIndex[index] = slot.ord
+                // 上一段思考已经结束（真出现时是「思考—搜索—再思考」），界面要清空重来
+                liveQueue += LiveDelta.ThinkStart
             }
 
             "text" -> {
@@ -393,12 +403,14 @@ class MessageAssembler(
         if (delta.isEmpty()) return
         val current = slots[ord]?.payload as? ThinkPayload ?: ThinkPayload()
         fill(ord, current.copy(content = current.content + delta))
+        liveQueue += LiveDelta.Think(delta)
     }
 
     private fun appendText(ord: Int, delta: String) {
         if (delta.isEmpty()) return
         val current = slots[ord]?.payload as? ResponsePayload ?: ResponsePayload()
         fill(ord, current.copy(content = current.content + delta))
+        liveQueue += LiveDelta.Text(delta)
     }
 
     private fun appendCitation(ord: Int, citation: JsonElement?) {

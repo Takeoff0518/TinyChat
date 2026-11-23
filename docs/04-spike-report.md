@@ -134,7 +134,8 @@ ZIP 条目 3422 / 未压缩 153.3MB / export_format_version=3 / 第一条=manife
 2. **禁止** 用 `rememberMarkdownState` 驱动逐帧追加（它适合"整篇一次性渲染"）；
 3. **只用** `rememberStreamingMarkdownState()` + 逐片 `append()` + `Markdown(streamingState)`；
 4. 长消息在 `LazyColumn` 里可用库自带的 `LazyMarkdownSuccess(streamingState, snapshot, components, modifier, paddingValues)`（已确认该 API 存在），但**必须先把分片率/帧合并做完再上懒加载**，否则仍会抖；
-5. 每帧内容的**高度单调不减**应作为 M2-3 的自动化断言（本次统计方法可直接复用）。
+5. 每帧内容的**高度单调不减**应作为 M2-3 的自动化断言（本次统计方法可直接复用）；
+6. **正在生成的那条正文不读数据库**（决策 74）：出字走内存里的实时快照，落库只负责防丢与历史。理由是同为「每帧一次」，两条路的代价差一个量级——读库那条每刷新一次都要把整段会话重新查一遍、把所有碎片重新解码，5Hz 就已经在烧主线程；内存快照只往下追加几个字符。判断依据见 `feature/chat/.../ChatViewModel.kt` 的 `observe()`：它每收到一次落库就把整条对话重新组装。
 
 ### 3.5 环境说明（诚实标注）
 

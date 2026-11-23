@@ -348,11 +348,13 @@ class ChatRepository(
         sessionId: String,
         text: String,
         attachments: List<PickedFile> = emptyList(),
+        /** 实时出字（决策 74）；`null` = 不要 */
+        onLive: LiveSink? = null,
     ): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val parentId = session.currentMessageId
             ?: db.messageDao().withFragments(sessionId).lastOrNull()?.message?.id
-        return sendInternal(session, parentId, text, attachments)
+        return sendInternal(session, parentId, text, attachments, onLive)
     }
 
     /**
@@ -363,10 +365,11 @@ class ChatRepository(
         sessionId: String,
         messageId: Long,
         text: String,
+        onLive: LiveSink? = null,
     ): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val original = db.messageDao().byId(messageId) ?: error("消息不存在：$messageId")
-        return sendInternal(session, original.parentId, text)
+        return sendInternal(session, original.parentId, text, onLive = onLive)
     }
 
     /**
@@ -377,6 +380,7 @@ class ChatRepository(
     suspend fun regenerate(
         sessionId: String,
         assistantMessageId: Long,
+        onLive: LiveSink? = null,
     ): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val original = db.messageDao().byId(assistantMessageId) ?: error("消息不存在：$assistantMessageId")
@@ -397,6 +401,7 @@ class ChatRepository(
             userText = userText,
             // 沿用当时那条提问的元信息快照，避免上下文里凭空多出一条新的 reminder
             reminder = question.reminderSnapshot ?: currentReminder(),
+            onLive = onLive,
         )
     }
 
@@ -430,6 +435,7 @@ class ChatRepository(
     suspend fun continueGeneration(
         sessionId: String,
         assistantMessageId: Long,
+        onLive: LiveSink? = null,
     ): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val target = db.messageDao().byId(assistantMessageId) ?: error("消息不存在：$assistantMessageId")
@@ -496,6 +502,9 @@ class ChatRepository(
                 request,
                 transport,
                 ChatProtocols.assembler(request.protocol),
+                // 续写是接在这段后面的：实时快照要从已有正文起算，否则界面会先短一截
+                baseText = partial,
+                onLive = onLive,
             )
         } catch (e: Throwable) {
             // 失败要把状态退回「未完成」，否则界面一直显示生成中，还挡住下一次继续
@@ -516,6 +525,7 @@ class ChatRepository(
         parentId: Long?,
         text: String,
         attachments: List<PickedFile> = emptyList(),
+        onLive: LiveSink? = null,
     ): RunOutcome {
         val sessionId = session.id
         val now = clock()
@@ -554,6 +564,7 @@ class ChatRepository(
             userText = text,
             reminder = reminder,
             assistantInsertedAt = now + 1,
+            onLive = onLive,
         )
     }
 
@@ -611,7 +622,7 @@ class ChatRepository(
     /**
      * M4-3 失败重试：附件重传 + 重新请求，**复用同一条提问**，不新建用户消息。
      */
-    suspend fun retryTurn(sessionId: String, userMessageId: Long): RunOutcome {
+    suspend fun retryTurn(sessionId: String, userMessageId: Long, onLive: LiveSink? = null): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val question = db.messageDao().byId(userMessageId) ?: error("消息不存在：$userMessageId")
 
@@ -626,6 +637,7 @@ class ChatRepository(
             userText = userText,
             reminder = question.reminderSnapshot
                 ?: currentReminder(),
+            onLive = onLive,
         )
     }
 
@@ -678,6 +690,7 @@ class ChatRepository(
         userText: String,
         reminder: String?,
         assistantInsertedAt: Long = clock(),
+        onLive: LiveSink? = null,
     ): RunOutcome {
         val sessionId = session.id
         val provider = requireProvider(session)
@@ -751,8 +764,9 @@ class ChatRepository(
             request,
             transport,
             ChatProtocols.assembler(request.protocol),
+            onLive = onLive,
         )
-        val finalOutcome = retryWithoutThinking(provider, session, command, key, assistantId, outcome)
+        val finalOutcome = retryWithoutThinking(provider, session, command, key, assistantId, outcome, onLive)
 
         // 费用定格（决策 47）：用这一轮自己的服务商与落库时间算一次写死，之后换家、调价都不改历史账
         costFor(provider, session.model, finalOutcome.usage, assistantInsertedAt)?.let { micros ->
@@ -788,6 +802,7 @@ class ChatRepository(
         key: String,
         assistantId: Long,
         outcome: RunOutcome,
+        onLive: LiveSink? = null,
     ): RunOutcome {
         val error = outcome.error ?: return outcome
         if (outcome.status != MessageStatus.FAILED) return outcome
@@ -810,7 +825,13 @@ class ChatRepository(
             command = retryCommand,
             extraHeaders = ChatProtocols.extraHeaders(provider, session.id),
         )
-        return runner.run(assistantId, retry, transport, ChatProtocols.assembler(retry.protocol))
+        return runner.run(
+            assistantId,
+            retry,
+            transport,
+            ChatProtocols.assembler(retry.protocol),
+            onLive = onLive,
+        )
     }
 
     /** 本地标题：压平换行后截 24 字，超出加省略号（与官方服务端标题长度相当）。 */

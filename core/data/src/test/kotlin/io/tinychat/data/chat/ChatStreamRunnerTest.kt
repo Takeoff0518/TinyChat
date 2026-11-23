@@ -1,4 +1,4 @@
-﻿package io.tinychat.data.chat
+package io.tinychat.data.chat
 
 import androidx.test.core.app.ApplicationProvider
 import io.tinychat.data.db.DatabaseFactory
@@ -6,7 +6,9 @@ import io.tinychat.data.db.MessageEntity
 import io.tinychat.data.db.SessionEntity
 import io.tinychat.data.db.TinyChatDatabase
 import io.tinychat.model.ErrorKind
+import io.tinychat.model.FragmentPayloadCodec
 import io.tinychat.model.MessageStatus
+import io.tinychat.model.ResponsePayload
 import io.tinychat.model.Role
 import io.tinychat.net.SseEvent
 import io.tinychat.net.SseReader
@@ -113,6 +115,7 @@ class ChatStreamRunnerTest {
         // 固定时钟 + 关闭节流：测试不依赖真实时间
         clock = { now },
         flushIntervalMillis = 0,
+        liveIntervalMillis = 0,
         // 重试退避不真等
         sleep = {},
     )
@@ -184,6 +187,69 @@ class ChatStreamRunnerTest {
         runner().run(id, request(), FakeTransport(sse(SEARCH_STREAM)))
 
         assertEquals("sig_abcdefghij", db.messageDao().byId(id)!!.thinkingSignature)
+    }
+
+    // —— 决策 74：实时出字 ——
+
+    @Test
+    fun `实时快照逐帧吐出，最后一帧与落库正文一致`() = runBlocking {
+        val id = newAssistantMessage()
+        val snapshots = mutableListOf<LiveStream>()
+        runner().run(
+            assistantMessageId = id,
+            request = request(),
+            transport = FakeTransport(sse(SEARCH_STREAM)),
+            onLive = { snapshots += it },
+        )
+
+        assertTrue("至少要吐两帧（中间态 + 收尾）", snapshots.size >= 2)
+        val stored = db.fragmentDao().byMessage(id)
+            .filter { it.type == "RESPONSE" }
+            .mapNotNull { (FragmentPayloadCodec.decode(it.payload) as? ResponsePayload)?.content }
+            .joinToString("")
+        assertEquals("主要更新：上下文 1M", stored)
+        // 界面靠这一帧交棒给数据库，差一个字就会闪
+        assertEquals(stored, snapshots.last().text)
+        assertEquals("先查一下。", snapshots.last().thinking)
+        assertTrue("快照要带上消息 id", snapshots.all { it.messageId == id })
+        // 正文只会变长，不会回缩（回缩就是界面上看到的那一下闪）
+        assertTrue(
+            "正文长度必须单调不减",
+            snapshots.zipWithNext().all { (before, after) -> after.text.length >= before.text.length },
+        )
+    }
+
+    @Test
+    fun `继续生成的实时快照把已有正文接在前面`() = runBlocking {
+        val id = newAssistantMessage()
+        val snapshots = mutableListOf<LiveStream>()
+        runner().run(
+            assistantMessageId = id,
+            request = request(),
+            transport = FakeTransport(sse(SEARCH_STREAM)),
+            baseText = "前半段。",
+            onLive = { snapshots += it },
+        )
+
+        assertEquals("前半段。主要更新：上下文 1M", snapshots.last().text)
+    }
+
+    @Test
+    fun `用户停止时最后一份实时快照照样发出去`() = runBlocking {
+        val id = newAssistantMessage()
+        val snapshots = mutableListOf<LiveStream>()
+
+        runCatching {
+            runner().run(
+                assistantMessageId = id,
+                request = request(),
+                transport = FakeTransport(sse(SEARCH_STREAM), failAfter = 3),
+                onLive = { snapshots += it },
+            )
+        }
+
+        assertTrue("停止前已经出过字，要留在屏幕上", snapshots.isNotEmpty())
+        assertEquals("先查一下。", snapshots.last().thinking)
     }
 
     // —— M1-11 自动重试 ——

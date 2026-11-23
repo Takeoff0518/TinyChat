@@ -11,6 +11,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import io.tinychat.data.attachment.AttachmentStore
 import io.tinychat.data.attachment.PickedFile
 import io.tinychat.data.chat.ChatRepository
+import io.tinychat.data.chat.LiveSink
+import io.tinychat.data.chat.LiveStream
 import io.tinychat.data.chat.RunOutcome
 import io.tinychat.data.db.FragmentEntity
 import io.tinychat.data.db.MessageWithFragments
@@ -54,6 +56,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -204,12 +208,27 @@ internal fun contextRatio(used: Int, window: Int): Float =
 internal fun isContextFull(used: Int, window: Int): Boolean =
     contextRatio(used, window) >= CONTEXT_BLOCK_RATIO
 
+/**
+ * 库里的正文追上实时正文了吗——追上才允许界面切回读库。
+ *
+ * 生成刚结束那一刻库里还落后一个落库间隔，这时切过去会看到正文忽然变短、再长回来，
+ * 所以判据是**长度**而不是「生成结束」（决策 74）。
+ */
+internal fun liveCaughtUp(stored: String?, live: String): Boolean =
+    stored != null && stored.length >= live.length
+
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val input: String = "",
     /** 输入框里待发送的附件（M4-1/2） */
     val attachments: List<DraftAttachment> = emptyList(),
     val isStreaming: Boolean = false,
+    /**
+     * 正在实时出字的那条消息（决策 74）；`null` = 没有。
+     *
+     * 界面只在这条上读实时快照代替库里的正文，别的消息一律照旧读库。
+     */
+    val liveMessageId: Long? = null,
     /** 是否已配置 Key（M7-6：Key 改成运行时可变，UI 要跟着重算） */
     val hasApiKey: Boolean = false,
     val error: String? = null,
@@ -367,6 +386,21 @@ class ChatViewModel(
     var sessionId: String? by mutableStateOf(null)
         private set
 
+    /**
+     * 生成中的实时快照（决策 74）。界面只订阅一次、每帧取最新值，
+     * 拼出来的正文不经过数据库，所以出字的节奏跟着帧走，不跟着落库走。
+     */
+    private val _live = MutableStateFlow<LiveStream?>(null)
+    val live: StateFlow<LiveStream?> = _live.asStateFlow()
+
+    /** 交给仓库的接收端：第一条快照就把「正在出字的那条」记到状态里 */
+    private val liveSink = LiveSink { snapshot ->
+        if (state.liveMessageId != snapshot.messageId) {
+            state = state.copy(liveMessageId = snapshot.messageId)
+        }
+        _live.value = snapshot
+    }
+
     private var job: Job? = null
     private var observing: Job? = null
     private var searchJob: Job? = null
@@ -475,6 +509,7 @@ class ChatViewModel(
         stopSpeaking()
         autoSpeakPending = false
         sessionId = id
+        clearLive()
         state = state.copy(
             isStreaming = false,
             error = null,
@@ -636,10 +671,11 @@ class ChatViewModel(
     fun retryAttachment(message: ChatMessage) {
         val id = sessionId ?: return
         if (state.isStreaming) return
+        clearLive()
         state = state.copy(isStreaming = true, error = null, errorKind = null)
         job = viewModelScope.launch {
             try {
-                state = state.withOutcomeError(repository.retryTurn(id, message.id))
+                state = state.withOutcomeError(repository.retryTurn(id, message.id, liveSink))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ChatException) {
@@ -648,6 +684,8 @@ class ChatViewModel(
                 state = state.copy(error = "文件上传失败，请重试", errorKind = null)
             } finally {
                 state = state.copy(isStreaming = false)
+                // 生成结束：库里追上就交棒，追不上就让实时快照继续顶着（等下一批落库）
+                finishLive()
             }
         }
     }
@@ -714,6 +752,7 @@ class ChatViewModel(
         // 新问题开始 = 停止正在读的上一条（chat-demo 同款行为）
         stopSpeaking()
         autoSpeakPending = state.autoSpeak
+        clearLive()
         state = state.copy(
             input = "",
             attachments = emptyList(),
@@ -738,7 +777,7 @@ class ChatViewModel(
                 persistSettings(id)
                 val outcome = if (editingId != null) {
                     // 编辑重发：在新分支上跑，旧分支留库
-                    repository.editMessage(id, editingId, text)
+                    repository.editMessage(id, editingId, text, liveSink)
                 } else {
                     repository.send(
                         sessionId = id,
@@ -756,6 +795,7 @@ class ChatViewModel(
                                 thumbPath = it.thumbPath,
                             )
                         },
+                        onLive = liveSink,
                     )
                 }
                 state = state.copy(
@@ -770,6 +810,8 @@ class ChatViewModel(
                 state = state.copy(error = "生成失败，请重试", errorKind = null)
             } finally {
                 state = state.copy(isStreaming = false)
+                // 生成结束：库里追上就交棒，追不上就让实时快照继续顶着（等下一批落库）
+                finishLive()
             }
         }
     }
@@ -800,10 +842,11 @@ class ChatViewModel(
 
         stopSpeaking()
         autoSpeakPending = state.autoSpeak
+        clearLive()
         state = state.copy(isStreaming = true, error = null)
         job = viewModelScope.launch {
             try {
-                state = state.withOutcomeError(repository.regenerate(id, message.id))
+                state = state.withOutcomeError(repository.regenerate(id, message.id, liveSink))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ChatException) {
@@ -813,6 +856,8 @@ class ChatViewModel(
                 state = state.copy(error = "生成失败，请重试", errorKind = null)
             } finally {
                 state = state.copy(isStreaming = false)
+                // 生成结束：库里追上就交棒，追不上就让实时快照继续顶着（等下一批落库）
+                finishLive()
             }
         }
     }
@@ -824,10 +869,11 @@ class ChatViewModel(
 
         stopSpeaking()
         autoSpeakPending = state.autoSpeak
+        clearLive()
         state = state.copy(isStreaming = true, error = null)
         job = viewModelScope.launch {
             try {
-                state = state.withOutcomeError(repository.continueGeneration(id, message.id))
+                state = state.withOutcomeError(repository.continueGeneration(id, message.id, liveSink))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ChatException) {
@@ -837,6 +883,8 @@ class ChatViewModel(
                 state = state.copy(error = "生成失败，请重试", errorKind = null)
             } finally {
                 state = state.copy(isStreaming = false)
+                // 生成结束：库里追上就交棒，追不上就让实时快照继续顶着（等下一批落库）
+                finishLive()
             }
         }
     }
@@ -859,6 +907,7 @@ class ChatViewModel(
         job?.cancel()
         observing?.cancel()
         stopSpeaking()
+        clearLive()
         autoSpeakPending = false
         sessionId = null
         // 草稿附件的缩略图要跟着清掉，别在磁盘上留垃圾
@@ -963,10 +1012,11 @@ class ChatViewModel(
 
         stopSpeaking()
         autoSpeakPending = state.autoSpeak
+        clearLive()
         state = state.copy(isStreaming = true, error = null, errorKind = null)
         job = viewModelScope.launch {
             try {
-                state = state.withOutcomeError(repository.regenerate(id, targetId))
+                state = state.withOutcomeError(repository.regenerate(id, targetId, liveSink))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ChatException) {
@@ -975,6 +1025,8 @@ class ChatViewModel(
                 state = state.copy(error = "生成失败，请重试", errorKind = null)
             } finally {
                 state = state.copy(isStreaming = false)
+                // 生成结束：库里追上就交棒，追不上就让实时快照继续顶着（等下一批落库）
+                finishLive()
             }
         }
     }
@@ -1256,6 +1308,39 @@ class ChatViewModel(
         }
     }
 
+    // —— 实时出字（决策 74）——
+
+    /** 开始新一轮之前把上一轮的快照清掉，免得新回答先闪一下旧字 */
+    private fun clearLive() {
+        _live.value = null
+        if (state.liveMessageId != null) state = state.copy(liveMessageId = null)
+    }
+
+    /**
+     * 交棒：库里这条消息已经有完整正文了，就把实时快照撤掉，界面改读库。
+     *
+     * 撤早了会闪一下（库里的正文最多落后一个落库间隔），所以判据是**长度追上**而不是
+     * 「生成结束」——生成刚结束时库里还是上一秒的内容。
+     */
+    private fun finishLive() {
+        val id = state.liveMessageId ?: return
+        val snapshot = _live.value
+        if (snapshot == null) {
+            state = state.copy(liveMessageId = null)
+            return
+        }
+        val stored = state.messages.firstOrNull { it.id == id }
+        // 还在生成：只有库里的正文追上了才交棒，撤早了会闪一下短的
+        val caughtUp = liveCaughtUp(stored?.text, snapshot.text)
+        // 生成已经结束且这条消息落成了终态：库就是最终结果。
+        // 拒答会主动删掉已下发的正文，长度永远追不上，只能按终态判。
+        val settled = !state.isStreaming && (stored == null || stored.status != MessageStatus.WIP)
+        if (caughtUp || settled) {
+            _live.value = null
+            state = state.copy(liveMessageId = null)
+        }
+    }
+
     private fun observe(id: String) {
         observing?.cancel()
         observing = viewModelScope.launch {
@@ -1295,6 +1380,8 @@ class ChatViewModel(
                         },
                         title = session?.title,
                     )
+                    // 库里的正文追上了就交棒（决策 74）
+                    finishLive()
                     // 会话合计（M7-2）：流式期间不查，落库稳定后再算
                     refreshUsage(id)
                     // 自动朗读：等这一轮真的落成 FINISHED 再读，别读半截

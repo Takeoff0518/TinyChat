@@ -49,6 +49,15 @@ internal fun LazyListLayoutInfo.isAtLatestBottom(): Boolean =
     latestItemVisible() && residualToBottom() <= 0.5f
 
 /**
+ * 「回到底部」圆钮的显示条件。
+ *
+ * **必须排除「正在跟随」**：跟随过程中每长出新字，在滚动补上的那一两帧里
+ * `isAtLatestBottom` 都是 false，只看它会让按钮在生成时一闪一闪，还会盖住正在长的那一行。
+ */
+internal fun shouldShowToBottom(following: Boolean, atBottom: Boolean): Boolean =
+    !following && !atBottom
+
+/**
  * 带动画滚到底，供「滚动到最新」按钮使用。
  */
 internal suspend fun LazyListState.animateToBottom() = scrollToLatest(animated = true)
