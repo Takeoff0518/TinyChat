@@ -15,7 +15,6 @@ internal class FrameMerger(
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000 },
     private val maxWaitMs: Long = 2_000,
     private val costFactor: Long = 2,
-    private val minWaitMs: Long = 0,
 ) {
     private var updatableAtMs = 0L
 
@@ -24,7 +23,6 @@ internal class FrameMerger(
 
     /** 记录一次渲染（解析 + 组装）的耗时，据此推迟下一次更新。 */
     fun recordCost(costMs: Long) {
-        val waitMs = (costMs.coerceAtLeast(0L) * costFactor).coerceIn(minWaitMs, maxWaitMs)
-        updatableAtMs = clockMs() + waitMs
+        updatableAtMs = clockMs() + minOf(maxWaitMs, costMs.coerceAtLeast(0L) * costFactor)
     }
 }

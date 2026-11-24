@@ -1,4 +1,4 @@
-﻿package io.tinychat.markdown
+package io.tinychat.markdown
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,7 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -25,10 +25,21 @@ import com.mikepenz.markdown.model.rememberStreamingMarkdownState
 import kotlinx.coroutines.delay
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
-import java.text.BreakIterator
 
 /** 列表符号：库默认是 `"• "`（带一个空格），宽度随字号变化，和正文的空隙不好控 */
 private val TcBulletHandler = BulletHandler { _, _, _, _, _ -> "•" }
+
+/**
+ * 重建解析状态后要一次性补回的长度，落在安全的字符边界上。
+ *
+ * 目标位置如果正好把一个代理对劈成两半，退回一个 UTF-16 单元——半个 emoji
+ * 交给解析器会渲染成方块，而且下一帧又会被改写，看起来就是闪一下。
+ */
+private fun safePrefix(target: String, wanted: Int): Int {
+    val capped = wanted.coerceIn(0, target.length)
+    if (capped == 0 || capped == target.length) return capped
+    return if (target[capped - 1].isHighSurrogate()) capped - 1 else capped
+}
 
 /**
  * 助手正文的 Markdown 渲染（M2-1 / M2-2）。
@@ -58,8 +69,8 @@ fun TcMarkdown(
 ) {
     var generation by remember { mutableIntStateOf(0) }
     var rebuildPrefix by remember { mutableIntStateOf(0) }
-    var revealing by remember { mutableStateOf(streaming) }
-    val merger = remember { FrameMerger(minWaitMs = 30) }
+    // 出字节奏跟着帧走：节流只按实测渲染耗时推迟，不设固定的最小间隔
+    val merger = remember { FrameMerger() }
     // `\(…\)` → `$…$`：GFM 会把 `\(` 当成转义括号吃掉反斜杠，不归一的话模型给的
     // LaTeX 行内公式会被当普通文字渲染（真机上表现为「公式糊在正文里」）
     val normalized = remember(content) { normalizeInlineMathDelimiters(content) }
@@ -87,51 +98,44 @@ fun TcMarkdown(
         val state = rememberStreamingMarkdownState()
 
         LaunchedEffect(state, target, streaming) {
-            if (streaming) revealing = true
-
             var cursor = state.content.length
+            // 重建之后第一次进：先把上一次已经显示的那一段原样补回去，
+            // 否则整篇会从头再长一遍（表现为闪一下）。
+            if (rebuildPrefix > 0) {
+                cursor = safePrefix(target, rebuildPrefix)
+                rebuildPrefix = 0
+                if (cursor > 0) state.append(target.substring(0, cursor))
+            }
+
             if (cursor > target.length || !target.regionMatches(0, state.content, 0, cursor)) {
                 // Markdown 归一化有时会改写已显示的前缀。重建后直接恢复已显示的长度。
                 rebuildPrefix = cursor.coerceAtMost(target.length)
                 generation += 1
                 return@LaunchedEffect
             }
+            if (cursor == target.length) return@LaunchedEffect
 
-            if (!revealing) {
-                if (cursor < target.length) state.append(target.substring(cursor))
-                rebuildPrefix = 0
-                return@LaunchedEffect
-            }
-
-            if (cursor < target.length) {
-                val characters = BreakIterator.getCharacterInstance().apply { setText(target) }
-                if (rebuildPrefix > 0) {
-                    cursor = characters.following(rebuildPrefix - 1)
-                    state.append(target.substring(0, cursor))
-                }
-
-                val remaining = target.length - cursor
-                val frames = if (streaming) (6 + remaining / 16).coerceAtMost(36)
-                    else (4 + remaining / 24).coerceAtMost(24)
-                val step = maxOf(if (streaming) 2 else 4, (remaining + frames - 1) / frames)
-                while (cursor < target.length) {
+            // 逐帧追加：正文每帧都可能变长，这里只补「新到的那一段」，
+            // 节流靠实测渲染耗时（FrameMerger），不靠固定定时器。
+            while (cursor < target.length) {
+                // 已结束的消息不节流：一次补完即可，没必要压着出
+                if (streaming) {
                     val wait = merger.millisUntilNextUpdate()
-                    if (wait > 0) delay(wait)
-
-                    val end = characters.following((cursor + step - 1).coerceAtMost(target.lastIndex))
-                    val startMs = nowMs()
-                    state.append(target.substring(cursor, end))
-                    merger.recordCost(nowMs() - startMs)
-                    cursor = end
+                    if (wait > 0) {
+                        delay(wait)
+                        continue
+                    }
                 }
+                val startMs = nowMs()
+                state.append(target.substring(cursor))
+                merger.recordCost(nowMs() - startMs)
+                cursor = target.length
             }
-            rebuildPrefix = 0
-            if (!streaming) revealing = false
         }
 
         CompositionLocalProvider(
             LocalBulletListHandler provides TcBulletHandler,
-            LocalMarkdownStreaming provides (streaming || revealing),
+            LocalMarkdownStreaming provides streaming,
             LocalCitationAnchors provides anchoredCitations,
         ) {
             Markdown(

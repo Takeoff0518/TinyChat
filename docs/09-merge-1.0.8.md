@@ -3,8 +3,8 @@
 > **这份文件是断点。** 上下文被压缩、换人接手、隔几天回来，都先读这里，再看 `docs/03-handoff.md` 的决策表。
 > 开工：2026-11-24。分支：`integration/1.1.0`（从 `master` 的 `0f7de79` 拉出）。
 
-**当前进度：阶段 6 完成**（实时快照在新代码上重做：`LiveStream`/`LiveSink` → 仓库 → ViewModel → 消息行；`ChatStreamRunnerTest` 三条 + `LiveHandoffTest` 已恢复；构建与单测全绿）。
-**下一步：阶段 7 · 删掉 TcMarkdown 里的逐字揭示层，出字回到跟帧走。**
+**当前进度：阶段 7 代码完成**（`TcMarkdown` 的 30ms 逐字揭示层与 `FrameMerger.minWaitMs` 已删，只保留前缀续接；真机 gfxinfo 复测等手机连回来再做）。
+**下一步：阶段 8 · 相册两处补丁（部分授权 / 失败态）。**
 
 ## 一、目标
 
