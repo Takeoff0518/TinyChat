@@ -352,6 +352,7 @@ fun TinyChatApp() {
                     ChatScreen(
                         sessionId = chatViewModel.sessionId,
                         state = chatViewModel.state,
+                        live = chatViewModel.live,
                         screenIsActive = chatIsActive && !drawerCoversChat,
                         hasApiKey = chatViewModel.state.hasApiKey,
                         autoSpeak = chatViewModel.state.autoSpeak,

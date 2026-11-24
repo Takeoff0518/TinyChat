@@ -8,7 +8,9 @@ import io.tinychat.model.FragmentPayloadCodec
 import io.tinychat.model.FragmentType
 import io.tinychat.model.MessageStatus
 import io.tinychat.model.Usage
+import io.tinychat.net.LiveDelta
 import io.tinychat.net.MessageAssembler
+import io.tinychat.net.SseEvent
 import io.tinychat.net.StopReason
 import io.tinychat.net.StreamAssembler
 import io.tinychat.net.transport.ChatException
@@ -31,19 +33,40 @@ data class RunOutcome(
 )
 
 /**
+ * 生成过程中的实时快照：界面直接读它出字，**不经过数据库**。
+ *
+ * [text] 是这一轮到目前为止的**完整正文**（继续生成时把这条消息原有的内容接在前面），
+ * [thinking] 是当前这段思考的全文。给快照而不是增量：界面拿一次就能直接渲染，
+ * 不必自己维护拼接状态，也不怕和落库的形态对不上。
+ */
+data class LiveStream(
+    val messageId: Long,
+    val thinking: String,
+    val text: String,
+)
+
+/** 实时快照的接收端。传 `null` 表示这一轮不要实时预览（单测这类场景）。 */
+fun interface LiveSink {
+    fun onSnapshot(snapshot: LiveStream)
+}
+
+/**
  * 流式落库与状态流转（M1-5）。
  *
- * 三条硬规则：
+ * 四条硬规则：
  * 1. **先落行再追加**：块一开始就插入空碎片行，后续原地 UPDATE，进程被杀也不会丢半句话；
- * 2. **节流写库**：默认 200ms 一次，逐 delta 写会把 SQLite 打满；
- * 3. **状态只由结局决定**：FINISHED / INCOMPLETE / CONTENT_FILTER / FAILED，
+ * 2. **节流写库**：默认 500ms 一次，逐 delta 写会把 SQLite 打满；
+ * 3. **界面不读库**：出字靠 [LiveSink] 的实时快照，落库只负责防丢与历史（决策 74）；
+ * 4. **状态只由结局决定**：FINISHED / INCOMPLETE / CONTENT_FILTER / FAILED，
  *    永远不留 WIP（取消也要落 INCOMPLETE）。
  */
 class ChatStreamRunner(
     private val messageDao: MessageDao,
     private val fragmentDao: FragmentDao,
     private val clock: () -> Long = { System.currentTimeMillis() },
-    private val flushIntervalMillis: Long = 200,
+    private val flushIntervalMillis: Long = 500,
+    /** 实时快照的最小间隔；界面按帧取，比这更密的更新本来就画不出来 */
+    private val liveIntervalMillis: Long = 16,
     /** 重试退避；测试传空实现，免得单测真等 1s */
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) {
@@ -54,6 +77,10 @@ class ChatStreamRunner(
         transport: ChatTransport,
         /** 协议决定的解码器（M8-1）：Messages 与 OpenAI 各一套，上层不感知差别 */
         assembler: StreamAssembler = MessageAssembler(clock),
+        /** 继续生成（M1-9）：这条消息原有正文，实时快照要接在前面，否则界面会先闪掉前半段 */
+        baseText: String = "",
+        /** 界面实时预览；`null` = 不要（单测等场景） */
+        onLive: LiveSink? = null,
     ): RunOutcome {
         // 继续生成（M1-9）会复用一条已有消息：新碎片的 ord 必须接在已有碎片后面，
         // 否则撞上 fragments(message_id, ord) 的唯一索引。
@@ -61,6 +88,25 @@ class ChatStreamRunner(
         val rowIds = HashMap<Int, Long>()
         val written = HashMap<Int, String>()
         var lastFlush = 0L
+
+        // —— 实时出字（决策 74）：只有内存，不碰库 ——
+        val liveText = StringBuilder(baseText)
+        val liveThink = StringBuilder()
+        var lastLiveAt = Long.MIN_VALUE / 2
+
+        fun publishLive(force: Boolean = false) {
+            val sink = onLive ?: return
+            val now = clock()
+            if (!force && now - lastLiveAt < liveIntervalMillis) return
+            lastLiveAt = now
+            sink.onSnapshot(
+                LiveStream(
+                    messageId = assistantMessageId,
+                    thinking = liveThink.toString(),
+                    text = liveText.toString(),
+                ),
+            )
+        }
 
         suspend fun flush(recovering: Boolean = false) {
             val base = ordBase ?: return
@@ -90,13 +136,27 @@ class ChatStreamRunner(
 
         try {
             ordBase = fragmentDao.nextOrd(assistantMessageId)
-            streamWithRetry(request, transport, assembler) { flushIfDue() }
+            streamWithRetry(request, transport) { event ->
+                assembler.onFrame(event.name, event.data)
+                assembler.drainLive { delta ->
+                    when (delta) {
+                        LiveDelta.ThinkStart -> liveThink.setLength(0)
+                        is LiveDelta.Think -> liveThink.append(delta.text)
+                        is LiveDelta.Text -> liveText.append(delta.text)
+                    }
+                }
+                if (liveText.isNotEmpty() || liveThink.isNotEmpty()) publishLive()
+                flushIfDue()
+            }
             assembler.finishUnpairedTools()
+            // 收尾这一帧必须发出去：界面要靠它拿到「完整的正文」再交给数据库
+            publishLive(force = true)
             return withContext(NonCancellable) {
                 flush()
                 finalize(assistantMessageId, assembler)
             }
         } catch (e: ChatException) {
+            publishLive(force = true)
             withContext(NonCancellable) {
                 runCatching { flush(recovering = true) }
                 messageDao.setStatus(assistantMessageId, MessageStatus.FAILED)
@@ -112,7 +172,10 @@ class ChatStreamRunner(
                 error = e,
             )
         } catch (e: CancellationException) {
-            // 用户点了停止：已生成的内容必须保留
+            // 用户点了停止：已生成的内容必须保留。
+            // 协程此时已是取消状态，普通挂起调用会立刻抛 CancellationException，
+            // 所以补落库与状态回写都放进不可取消的上下文——否则最后一段会丢。
+            publishLive(force = true)
             withContext(NonCancellable) {
                 runCatching { flush(recovering = true) }
                 messageDao.markInterrupted(assistantMessageId)
@@ -132,8 +195,7 @@ class ChatStreamRunner(
     private suspend fun streamWithRetry(
         request: PreparedRequest,
         transport: ChatTransport,
-        assembler: StreamAssembler,
-        flush: suspend () -> Unit,
+        onEvent: suspend (SseEvent) -> Unit,
     ) {
         var attempt = 0
         while (true) {
@@ -141,8 +203,7 @@ class ChatStreamRunner(
             try {
                 transport.stream(request).collect { event ->
                     sawFrame = true
-                    assembler.onFrame(event.name, event.data)
-                    flush()
+                    onEvent(event)
                 }
                 return
             } catch (e: CancellationException) {
