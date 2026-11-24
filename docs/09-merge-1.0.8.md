@@ -4,7 +4,29 @@
 > 开工：2026-11-24。分支：`integration/1.1.0`（从 `master` 的 `0f7de79` 拉出）。
 
 **当前进度：阶段 0–9 完成，阶段 10 收尾中。** 构建、单测、lint 全绿；`1.1.0` 的功能面已定稿。
-**待办**：① 推分支开 draft PR 跑 CI；② 手机连回来后做一次集中真机验证（gfxinfo 复测、升级安装、7 种语言、相册四种状态、冷启动）；③ 全绿后合 `master`。
+**待办**：① 推分支开 draft PR 跑 CI（已开 PR #3，CI 已绿）；② 手机连回来后做一次集中真机验证（见下）；③ 全绿后合 `master`。
+
+## 七、真机验证清单（2026-11-24 夜，手机已连）
+
+设备：华为 FIN-AL60，**API 31（Android 12）**——注意 `READ_MEDIA_VISUAL_USER_SELECTED` 的部分授权路径是 Android 14 才有的，这台机上验不到。
+
+- [x] 覆盖安装 `app-release.apk`（versionCode 2 盖 1.0.0）：Success，版本号变 1.1.0，**首屏与抽屉里 14 条历史会话都在**（Room 校验通过，等价于 schema 5→6 迁移成功）
+- [x] 冷启动 `am start -W`：TotalTime 912ms（M9-5 记的 349/334ms 与之不同口径，别直接比，以 912 为 1.1.0 基线重新记）
+- [ ] 流式出字 gfxinfo：文字回答 ≥40 帧、卡顿帧 <2%（2026-11-24 夜没测成：`继续生成` 按钮没找到，session 打开后 9 秒 0 帧；下次改用「新对话 + 发一条长问题」）
+- [ ] 代码块回答重新记基线（`TcCodeBlock` 被 PR 重写过）
+- [ ] 停止生成：最后一段不丢、状态 INCOMPLETE、「继续生成」出现
+- [ ] 七种语言各切一遍（含繁中），日期时间与相册文案
+- [ ] 相册：允许 / 拒绝 / 查询失败三种状态（部分授权本机验不到）
+- [ ] 联网搜索：DeepSeek / Tavily / AnySearch 至少各发一次
+- [ ] 附件：PDF 或 Office 文件文本提取
+- [ ] 上下文压缩：无需强制触发，确认设置页/用量显示正常
+
+### 真机上踩到的操作坑（省得下次再摸）
+
+- **抽屉按钮**：首页左上角 `(90, 188)`；**不要**从屏幕左边缘 `x=3` 往右滑——那是系统返回手势，会直接退出应用。
+- **输入法 ID** 是单斜杠：`adb shell ime set com.huawei.ohos.inputmethod/com.android.inputmethod.latin.LatinIME`（写成交叉包名会报 Unknown input method）。用完记得切回 `com.sohu.inputmethod.sogou/.SogouIME`。
+- `uiautomator dump` 在流式期间经常写不出文件，重试即可。
+- 应用被切到后台时，dump 出来的是桌面——先看 `dumpsys window | grep mCurrentFocus` 再下结论。
 
 ## 一、目标
 
