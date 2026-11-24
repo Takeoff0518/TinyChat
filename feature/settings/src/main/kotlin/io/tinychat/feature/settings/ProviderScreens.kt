@@ -1,6 +1,6 @@
 package io.tinychat.feature.settings
 
-import android.content.Context
+import android.content.res.Resources
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -39,7 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -238,7 +238,8 @@ fun ProviderEditorScreen(
     onFetchModels: suspend (Provider, String?) -> List<DiscoveredModel>,
 ) {
     val palette = TcTheme.palette
-    val context = LocalContext.current
+    // 取字符串一律走 LocalResources：LocalContext 不是配置感知的，换语言/改字号后会拿到陈旧值
+    val res = LocalResources.current
     val scope = rememberCoroutineScope()
     val adding = provider == null
     // 目录里的预设可以重复添加（决策 48）：两块不同的 Key、两个网关、两个地区互不影响
@@ -331,13 +332,13 @@ fun ProviderEditorScreen(
     fun save() {
         val candidate = draftProvider()
         val localError = when {
-            candidate.displayName.isBlank() -> context.getString(R.string.prefs_detail_provider_name_required)
-            candidate.baseUrl.isBlank() -> context.getString(R.string.prefs_detail_provider_url_required)
-            !candidate.baseUrl.startsWith("https://") -> context.getString(R.string.prefs_detail_provider_https_required)
-            candidate.models.isEmpty() -> context.getString(R.string.prefs_detail_provider_model_required)
+            candidate.displayName.isBlank() -> res.getString(R.string.prefs_detail_provider_name_required)
+            candidate.baseUrl.isBlank() -> res.getString(R.string.prefs_detail_provider_url_required)
+            !candidate.baseUrl.startsWith("https://") -> res.getString(R.string.prefs_detail_provider_https_required)
+            candidate.models.isEmpty() -> res.getString(R.string.prefs_detail_provider_model_required)
             !adding -> null
-            existing.any { it.id == candidate.id } -> context.getString(R.string.prefs_detail_provider_id_taken)
-            !candidate.id.matches(ID_REGEX) -> context.getString(R.string.prefs_detail_provider_id_invalid)
+            existing.any { it.id == candidate.id } -> res.getString(R.string.prefs_detail_provider_id_taken)
+            !candidate.id.matches(ID_REGEX) -> res.getString(R.string.prefs_detail_provider_id_invalid)
             else -> null
         }
         if (localError != null) {
@@ -350,7 +351,7 @@ fun ProviderEditorScreen(
             runCatching {
                 onSave(candidate, key.trim().takeIf { it.isNotEmpty() })
                 onBack()
-            }.onFailure { error = it.message ?: context.getString(R.string.prefs_detail_save_failed) }
+            }.onFailure { error = it.message ?: res.getString(R.string.prefs_detail_save_failed) }
             busy = false
         }
     }
@@ -361,7 +362,7 @@ fun ProviderEditorScreen(
             busy = true
             checking = true
             val message = runCatching { onCheck(candidate, key.trim().takeIf { it.isNotEmpty() }) }
-                .getOrElse { it.message ?: context.getString(R.string.prefs_detail_provider_check_failed) }
+                .getOrElse { it.message ?: res.getString(R.string.prefs_detail_provider_check_failed) }
             checkMessage = message
             checkStatus = if (message == null) ProviderCheck.OK else ProviderCheck.FAILED
             checking = false
@@ -506,7 +507,7 @@ fun ProviderEditorScreen(
                                 checking -> stringResource(R.string.prefs_detail_provider_checking)
                                 keyCleared -> stringResource(R.string.prefs_detail_provider_key_cleared)
                                 checkStatus == ProviderCheck.OK -> stringResource(R.string.prefs_detail_provider_available)
-                                checkStatus == ProviderCheck.FAILED -> checkMessage?.let(context::providerError)
+                                checkStatus == ProviderCheck.FAILED -> checkMessage?.let(res::providerError)
                                     ?: stringResource(R.string.prefs_detail_provider_check_failed)
                                 else -> stringResource(R.string.prefs_detail_provider_unchecked)
                             },
@@ -563,13 +564,13 @@ fun ProviderEditorScreen(
                             runCatching { onFetchModels(candidate, key.trim().takeIf { it.isNotEmpty() }) }
                                 .onSuccess { discovered ->
                                     if (discovered.isEmpty()) {
-                                        error = context.getString(R.string.prefs_detail_provider_no_models)
+                                        error = res.getString(R.string.prefs_detail_provider_no_models)
                                     } else {
                                         models = candidate.mergeDiscoveredModels(discovered)
                                     }
                                 }
                                 .onFailure {
-                                    error = it.message ?: context.getString(R.string.prefs_detail_provider_fetch_failed)
+                                    error = it.message ?: res.getString(R.string.prefs_detail_provider_fetch_failed)
                                 }
                             fetching = false
                             busy = false
@@ -579,7 +580,7 @@ fun ProviderEditorScreen(
 
                 error?.let {
                     Text(
-                        text = context.providerError(it),
+                        text = res.providerError(it),
                         style = TcTypography.labelMedium,
                         color = palette.danger,
                         modifier = Modifier.padding(top = 10.dp),
@@ -1161,7 +1162,7 @@ internal fun EditorField(
 private val ID_REGEX = Regex("^[a-z][a-z0-9-]{1,31}$")
 
 // Existing installations may have these verifier messages saved in their provider records.
-private fun Context.providerError(message: String): String {
+private fun Resources.providerError(message: String): String {
     val resource = when (message) {
         "尚未配置 API Key", "请先填写 API Key" -> R.string.prefs_detail_provider_key_missing
         "Key 无效", "API Key 无效，请检查后重试" -> R.string.prefs_detail_provider_key_invalid

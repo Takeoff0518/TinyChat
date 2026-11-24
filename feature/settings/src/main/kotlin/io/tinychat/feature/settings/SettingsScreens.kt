@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -419,6 +420,8 @@ fun DataManagementScreen(
     onClearAll: () -> Unit,
 ) {
     val context = LocalContext.current
+    // 文案走 LocalResources：LocalContext 不是配置感知的，换语言后会拿到陈旧值
+    val res = LocalResources.current
     val palette = TcTheme.palette
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
@@ -434,17 +437,17 @@ fun DataManagementScreen(
     fun startImport(uri: Uri) {
         if (busy) return
         busy = true
-        status = context.getString(R.string.prefs_home_importing)
+        status = res.getString(R.string.prefs_home_importing)
         scope.launch {
             try {
                 val report = archive.import(uri)
-                status = context.getString(R.string.prefs_home_import_done, report.sessions, report.messages, report.files)
+                status = res.getString(R.string.prefs_home_import_done, report.sessions, report.messages, report.files)
                 onImported()
             } catch (e: CancellationException) {
                 // 离开页面时被取消很正常，别当成"导入失败"显示给用户
                 throw e
             } catch (e: Exception) {
-                status = context.getString(R.string.prefs_home_import_failed, e.message ?: e::class.simpleName.orEmpty())
+                status = res.getString(R.string.prefs_home_import_failed, e.message ?: e::class.simpleName.orEmpty())
             } finally {
                 busy = false
             }
@@ -460,18 +463,18 @@ fun DataManagementScreen(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         busy = true
-        status = context.getString(R.string.prefs_home_exporting)
+        status = res.getString(R.string.prefs_home_exporting)
         scope.launch {
             try {
                 val report = archive.export(uri) { done, total ->
-                    val value = context.getString(R.string.prefs_home_export_progress, done, total)
+                    val value = res.getString(R.string.prefs_home_export_progress, done, total)
                     scope.launch { status = value }
                 }
-                status = context.getString(R.string.prefs_home_export_done, report.sessions, report.messages, android.text.format.Formatter.formatShortFileSize(context, report.bytes))
+                status = res.getString(R.string.prefs_home_export_done, report.sessions, report.messages, android.text.format.Formatter.formatShortFileSize(context, report.bytes))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                status = context.getString(R.string.prefs_home_export_failed, e.message ?: e::class.simpleName.orEmpty())
+                status = res.getString(R.string.prefs_home_export_failed, e.message ?: e::class.simpleName.orEmpty())
             } finally {
                 busy = false
             }
@@ -530,7 +533,7 @@ fun DataManagementScreen(
                 TextButton(onClick = {
                     confirmClear = false
                     onClearAll()
-                    status = context.getString(R.string.prefs_home_clear_done)
+                    status = res.getString(R.string.prefs_home_clear_done)
                 }) { Text(stringResource(R.string.prefs_home_clear)) }
             },
             dismissButton = {

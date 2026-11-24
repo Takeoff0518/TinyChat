@@ -16,12 +16,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    lint {
-        // i18n 后各屏用 LocalContext.current 取字符串，部分在非 Composable 辅助函数里；
-        // 改用 LocalResources 要动 30 多处、易出行为差异，且应用在配置变化时会重建界面，
-        // 实际读不到陈旧资源。先关这条规则；新代码仍优先用 stringResource。
-        disable += "LocalContextGetResourceValueCall"
-    }
 }
 
 kotlin {

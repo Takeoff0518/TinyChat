@@ -1,6 +1,6 @@
 package io.tinychat.feature.chat
 
-import android.content.Context
+import android.content.res.Resources
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import io.tinychat.model.ThinkingEffort
@@ -89,36 +89,36 @@ private fun chatStatusResource(message: String): Int? = when (message) {
 }
 
 /** Translate app-owned notices and preserve raw details returned by providers. */
-internal fun localizedChatStatus(context: Context, message: String): String {
-    chatStatusResource(message)?.let { return context.getString(it) }
+internal fun localizedChatStatus(res: Resources, message: String): String {
+    chatStatusResource(message)?.let { return res.getString(it) }
     if (message.startsWith("请求超时：超过 ") && message.endsWith(" 秒没有收到数据")) {
         val seconds = message.removePrefix("请求超时：超过 ").removeSuffix(" 秒没有收到数据")
-        return context.getString(R.string.chat_stream_timeout, seconds)
+        return res.getString(R.string.chat_stream_timeout, seconds)
     }
     if (message.endsWith(" 服务繁忙，稍后再试")) {
-        return context.getString(R.string.chat_named_provider_busy, message.removeSuffix(" 服务繁忙，稍后再试"))
+        return res.getString(R.string.chat_named_provider_busy, message.removeSuffix(" 服务繁忙，稍后再试"))
     }
     if (message.startsWith("已换到 ") && message.endsWith("，支持的历史附件会随对话发送")) {
         val provider = message.removePrefix("已换到 ").removeSuffix("，支持的历史附件会随对话发送")
-        val name = if (provider == "新的服务商") context.getString(R.string.chat_the_new_provider) else provider
-        return context.getString(R.string.chat_switched_to_supported_attachments_will_carry_over, name)
+        val name = if (provider == "新的服务商") res.getString(R.string.chat_the_new_provider) else provider
+        return res.getString(R.string.chat_switched_to_supported_attachments_will_carry_over, name)
     }
     oversizedAttachment.matchEntire(message)?.let { match ->
         val (fileName, limit) = match.destructured
-        return context.getString(R.string.chat_exceeds, fileName, limit)
+        return res.getString(R.string.chat_exceeds, fileName, limit)
     }
     namedAttachmentIssue.matchEntire(message)?.let { match ->
         val (fileName, reason) = match.destructured
         when {
             reason == "仅支持 PDF 和纯文本文件" -> {
-                return context.getString(R.string.chat_isn_t_supported_use_a_pdf_or, fileName)
+                return res.getString(R.string.chat_isn_t_supported_use_a_pdf_or, fileName)
             }
             reason.startsWith("超过 ") -> {
-                return context.getString(R.string.chat_exceeds, fileName, reason.removePrefix("超过 "))
+                return res.getString(R.string.chat_exceeds, fileName, reason.removePrefix("超过 "))
             }
         }
         chatStatusResource(reason)?.let {
-            return context.getString(R.string.chat_attachment_error, fileName, context.getString(it))
+            return res.getString(R.string.chat_attachment_error, fileName, res.getString(it))
         }
     }
     return message

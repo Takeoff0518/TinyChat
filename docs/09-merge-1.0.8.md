@@ -3,6 +3,9 @@
 > **这份文件是断点。** 上下文被压缩、换人接手、隔几天回来，都先读这里，再看 `docs/03-handoff.md` 的决策表。
 > 开工：2026-11-24。分支：`integration/1.1.0`（从 `master` 的 `0f7de79` 拉出）。
 
+**当前进度：阶段 2 完成**（lint 屏蔽已撤，五个模块 `lint` 全绿；字符串统一改走 `LocalResources`；CI 加了"构建脚本不许 disable"的护栏；单测全绿）。
+**下一步：阶段 3 · 删 Harness 提示词与专家模式。**
+
 ## 一、目标
 
 把贡献者的两条 PR 线（`Takeoff0518/TinyChat#2`，head `pr-2` = `6f9dfb0`，163 文件 / +14859−5655）整包接进来，
@@ -69,6 +72,9 @@ PR 的定位：功能是我们需要的，实现是 Agent 赶工出来的，质�
 验收：`:app:assembleDebug` + 全量单测过。
 
 ### 阶段 2：lint 归正
+
+> ⚠️ **教训（2026-11-24）**：这台机器上的 PowerShell 读写 UTF-8 源码会把中文注释变成乱码（`Get-Content -Raw` 按 GBK 读、`WriteAllText` 按 UTF-8 写）。
+> **改源码一律用 read / edit / write 工具，不要用 PowerShell 做文本替换。** 保险丝：`git checkout HEAD -- <文件>`。
 
 - 删三处 `lint { disable += "LocalContextGetResourceValueCall" }`（`app` / `feature/chat` / `feature/settings` 的 `build.gradle.kts`）
 - **规则不是机械换 `stringResource`**：非 Composable 函数只返回 `@StringRes Int` + 参数，解析发生在 Composable 边缘

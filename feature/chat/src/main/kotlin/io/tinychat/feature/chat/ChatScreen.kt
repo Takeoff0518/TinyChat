@@ -122,6 +122,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
@@ -239,6 +240,8 @@ fun ChatScreen(
 ) {
     val palette = TcTheme.palette
     val context = LocalContext.current
+    // 取字符串走 LocalResources：LocalContext 不是配置感知的
+    val res = LocalResources.current
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var attachmentDrawerOpen by remember(sessionId, state.providerId, state.modelId) { mutableStateOf(false) }
@@ -299,7 +302,7 @@ fun ChatScreen(
         if (granted) {
             onToggleVoiceMode()
         } else {
-            Toast.makeText(context, context.getString(R.string.chat_allow_microphone_access_in_system_settings), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, res.getString(R.string.chat_allow_microphone_access_in_system_settings), Toast.LENGTH_SHORT).show()
         }
     }
     val onMicClick: () -> Unit = {
@@ -315,7 +318,7 @@ fun ChatScreen(
     // 语音/朗读的一次性提示（未识别到语音内容、朗读失败……）
     LaunchedEffect(state.hint) {
         val hint = state.hint ?: return@LaunchedEffect
-        Toast.makeText(context, localizedChatStatus(context, hint), Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, localizedChatStatus(res, hint), Toast.LENGTH_SHORT).show()
         onClearHint()
     }
 
@@ -394,7 +397,7 @@ fun ChatScreen(
         }
 
         state.error?.let { message ->
-            val displayMessage = localizedChatStatus(context, message)
+            val displayMessage = localizedChatStatus(res, message)
             val action = if (state.errorKind == ErrorKind.HTTP_401) onOpenProviderSettings else null
             Text(
                 text = if (action != null) stringResource(R.string.chat_error_with_settings, displayMessage) else displayMessage,
@@ -786,7 +789,7 @@ private fun MessageRow(
             message.retryHint?.let { hint ->
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = localizedChatStatus(LocalContext.current, hint),
+                    text = localizedChatStatus(LocalResources.current, hint),
                     style = TcTypography.bodySmall,
                     color = palette.labelTertiary,
                 )
@@ -839,6 +842,7 @@ private fun MessageRow(
     val toolSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val shareSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
+    val res = LocalResources.current
     val scope = rememberCoroutineScope()
 
     Box {
@@ -1059,14 +1063,14 @@ private fun MessageRow(
                     result.onSuccess { shareResult = it }
                         .onFailure { throwable ->
                             android.util.Log.w("ShareCapture", "生成长图失败", throwable)
-                            Toast.makeText(context, context.getString(R.string.chat_couldn_t_create_the_image_try_again), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, res.getString(R.string.chat_couldn_t_create_the_image_try_again), Toast.LENGTH_SHORT).show()
                         }
                 }
             },
             onCopyText = {
                 shareOpen = false
                 copyText(context, message.text)
-                Toast.makeText(context, context.getString(R.string.chat_copied), Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, res.getString(R.string.chat_copied), Toast.LENGTH_SHORT).show()
             },
             onShareText = {
                 shareOpen = false
