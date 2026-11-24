@@ -1,5 +1,7 @@
 package io.tinychat.feature.chat.share
 
+import androidx.compose.ui.res.stringResource
+import io.tinychat.feature.chat.R
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -15,7 +17,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -33,6 +34,7 @@ import androidx.core.content.FileProvider
 import io.tinychat.designsystem.TcTheme
 import io.tinychat.designsystem.TcTypography
 import java.io.File
+import io.tinychat.ui.TcAlertDialog
 
 /**
  * 分享抽屉（M8-2 / 02 §12.9）：生成长图 / 复制文本 / 分享文本。
@@ -53,11 +55,11 @@ fun ShareSheet(
         containerColor = palette.bg,
     ) {
         Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
-            Text("分享", style = TcTypography.titleMedium, color = palette.labelPrimary)
+            Text(stringResource(R.string.chat_share), style = TcTypography.titleMedium, color = palette.labelPrimary)
             Spacer(Modifier.height(10.dp))
-            ShareRow("生成长图", null, onGenerateImage)
-            ShareRow("复制文本", null, onCopyText)
-            ShareRow("分享文本", null, onShareText)
+            ShareRow(stringResource(R.string.chat_create_image), null, onGenerateImage)
+            ShareRow(stringResource(R.string.chat_copy_text), null, onCopyText)
+            ShareRow(stringResource(R.string.chat_share_text), null, onShareText)
         }
     }
 }
@@ -83,14 +85,14 @@ private fun ShareRow(title: String, subtitle: String?, onClick: () -> Unit) {
 @Composable
 fun ShareProgressDialog() {
     val palette = TcTheme.palette
-    AlertDialog(
+    TcAlertDialog(
         onDismissRequest = {},
         confirmButton = {},
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(modifier = Modifier.size(26.dp), color = palette.brand)
                 Spacer(Modifier.height(12.dp))
-                Text("正在生成长图", style = TcTypography.bodyMedium, color = palette.labelPrimary)
+                Text(stringResource(R.string.chat_creating_image), style = TcTypography.bodyMedium, color = palette.labelPrimary)
             }
         },
     )
@@ -104,11 +106,11 @@ fun SharePreviewDialog(
     onDismiss: () -> Unit,
 ) {
     val palette = TcTheme.palette
-    AlertDialog(
+    TcAlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = if (output.pages > 1) "分享长图（共 ${output.pages} 张）" else "分享长图",
+                text = if (output.pages > 1) stringResource(R.string.chat_share_image_count, output.pages) else stringResource(R.string.chat_share_image),
                 style = TcTypography.titleMedium,
                 color = palette.labelPrimary,
             )
@@ -125,10 +127,10 @@ fun SharePreviewDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = onShare) { Text("分享") }
+            TextButton(onClick = onShare) { Text(stringResource(R.string.chat_share)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = TcTheme.palette.labelSecondary) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.chat_cancel), color = TcTheme.palette.labelSecondary) }
         },
     )
 }
@@ -138,12 +140,12 @@ fun shareText(context: Context, text: String) {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)
     }
-    context.startActivity(Intent.createChooser(send, "分享回答"))
+    context.startActivity(Intent.createChooser(send, context.getString(R.string.chat_share_response)))
 }
 
 fun copyText(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("回答", text))
+    clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_response), text))
 }
 
 fun shareImages(context: Context, files: List<File>) {
@@ -162,5 +164,5 @@ fun shareImages(context: Context, files: List<File>) {
         }
     }
     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    context.startActivity(Intent.createChooser(intent, "分享长图"))
+    context.startActivity(Intent.createChooser(intent, context.getString(R.string.chat_share_image)))
 }

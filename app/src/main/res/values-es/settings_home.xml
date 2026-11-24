@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prefs_home_unconfigured">Sin configurar</string>
+    <string name="prefs_home_provider_count">Proveedores: %1$d</string>
+    <string name="prefs_home_official_prompt">Instrucciones predeterminadas</string>
+    <string name="prefs_home_no_prompt">Ninguna</string>
+    <string name="prefs_home_crash">Cierre inesperado</string>
+    <string name="prefs_home_chat">Chat</string>
+    <string name="prefs_home_diag">Diagnóstico</string>
+    <string name="app_chat_generation">Procesando la conversación…</string>
+</resources>

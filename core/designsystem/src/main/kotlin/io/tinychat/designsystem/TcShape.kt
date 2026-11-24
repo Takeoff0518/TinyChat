@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.dp
 val BubbleShape = RoundedCornerShape(22.dp)
 val InputShape = RoundedCornerShape(24.dp)
 val CardShape = RoundedCornerShape(12.dp)
-val SheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+val DialogShape = RoundedCornerShape(24.dp)
 val PillShape = RoundedCornerShape(50)
 
 val TcShapes = Shapes(
@@ -16,5 +16,5 @@ val TcShapes = Shapes(
     small = RoundedCornerShape(8.dp),
     medium = CardShape,
     large = RoundedCornerShape(16.dp),
-    extraLarge = SheetShape,
+    extraLarge = DialogShape,
 )

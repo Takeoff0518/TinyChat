@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="markdown_collapse_code">Свернуть</string>
+    <string name="markdown_copied">Скопировано</string>
+    <string name="markdown_copy">Копировать</string>
+    <string name="markdown_copy_code">Копировать код</string>
+    <string name="markdown_diagram_error">Не удалось построить диаграмму</string>
+    <string name="markdown_diagram_error_detail">Не удалось построить диаграмму (%s)</string>
+    <string name="markdown_expand_code">Развернуть код (строк: %d)</string>
+    <string name="markdown_mermaid_diagram">Диаграмма Mermaid</string>
+    <string name="markdown_render_failure">Ошибка отрисовки</string>
+    <string name="markdown_render_timeout">Превышено время отрисовки</string>
+    <string name="markdown_rendering_diagram">Построение диаграммы…</string>
+    <string name="markdown_rendering_math">Построение формулы…</string>
+    <string name="markdown_show_code">Показать код</string>
+    <string name="markdown_show_diagram">Показать диаграмму</string>
+</resources>

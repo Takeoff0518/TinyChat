@@ -7,7 +7,10 @@ import android.util.Base64
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -59,6 +62,11 @@ class KeystoreSecretStore(context: Context) : SecretStore {
         val raw = store.data.first()[keyOf(providerId)] ?: return null
         return runCatching { decrypt(raw) }.getOrNull()?.takeIf { it.isNotBlank() }
     }
+
+    fun observeHas(providerId: String): Flow<Boolean> = store.data
+        .map { it[keyOf(providerId)] }
+        .distinctUntilChanged()
+        .map { raw -> raw != null && runCatching { decrypt(raw).isNotBlank() }.getOrDefault(false) }
 
     override suspend fun write(providerId: String, value: String) {
         val trimmed = value.trim()

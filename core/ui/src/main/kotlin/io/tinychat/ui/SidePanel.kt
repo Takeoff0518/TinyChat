@@ -2,6 +2,9 @@ package io.tinychat.ui
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -14,10 +17,10 @@ import kotlin.math.abs
  * 两个面板都是自绘的（P-030 起左抽屉也自己画）：拖拽 1:1 跟手，松手走固定时长的
  * 曲线，速度只参与「开还是关」的判定，不参与动画 —— 所以不会冲过终点再弹回来。
  *
- * - [Sessions] 左侧会话抽屉；
- * - [Usage] 右侧「用量与费用」。
+ * - [Sessions] 起始侧会话抽屉；
+ * - [Usage] 结束侧「用量与费用」。
  */
-enum class SidePanel { None, Sessions, Usage }
+enum class SidePanel(val openProgress: Float) { None(0f), Sessions(1f), Usage(-1f) }
 
 /** 朝打开方向走过多少算开：2%。左右两个侧栏都几乎「有位移就开」（P-031，对齐官方那种手感）。 */
 const val PANEL_OPEN_FRACTION = 0.02f
@@ -74,15 +77,18 @@ fun panelTargetOpen(
  * @param onDragDelta 相对上一次的水平位移，px（向左为负）
  * @param onDragEnd 松手时的横向速度，dp/s（向右为正）——已换算好，调用方不必再管密度
  */
+@Composable
 fun Modifier.swipeToOpenPanel(
     enabled: Boolean,
     onDragStart: (leftward: Boolean) -> Unit,
     onDragDelta: (leftward: Boolean, dxPx: Float) -> Unit,
     onDragEnd: (leftward: Boolean, velocityDp: Float) -> Unit,
-): Modifier = if (!enabled) {
-    this
-} else {
-    this.pointerInput(Unit) {
+): Modifier {
+    if (!enabled) return this
+    val startDrag by rememberUpdatedState(onDragStart)
+    val updateDrag by rememberUpdatedState(onDragDelta)
+    val endDrag by rememberUpdatedState(onDragEnd)
+    return pointerInput(Unit) {
         val slop = viewConfiguration.touchSlop
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
@@ -108,19 +114,19 @@ fun Modifier.swipeToOpenPanel(
                     if (abs(dx) < abs(change.position.y - startY) * PANEL_SWIPE_RATIO) break
                     claimed = true
                     leftward = dx < 0f
-                    onDragStart(leftward)
+                    startDrag(leftward)
                     lastX = change.position.x
                     change.consume()
                     continue
                 }
 
                 tracker.addPosition(change.uptimeMillis, change.position)
-                onDragDelta(leftward, change.position.x - lastX)
+                updateDrag(leftward, change.position.x - lastX)
                 lastX = change.position.x
                 change.consume()
             }
 
-            if (claimed) onDragEnd(leftward, tracker.calculateVelocity().x / density)
+            if (claimed) endDrag(leftward, tracker.calculateVelocity().x / density)
         }
     }
 }

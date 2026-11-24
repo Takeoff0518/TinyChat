@@ -21,8 +21,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Package = 'top.tbpdt.tinychat'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+$buildConfig = Get-Content -Raw -LiteralPath (Join-Path $RepoRoot 'app/build.gradle.kts')
+if ($buildConfig -notmatch '(?m)^\s*applicationId\s*=\s*"([^"]+)"') {
+    throw '无法从构建配置读取应用标识。'
+}
+$Package = $Matches[1]
 
 if (-not $OutDir) {
     $OutDir = Join-Path $RepoRoot ('captures\baseline-' + (Get-Date -Format 'yyyyMMdd-HHmm'))

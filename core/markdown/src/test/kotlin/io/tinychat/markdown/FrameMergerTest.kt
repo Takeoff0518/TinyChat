@@ -49,6 +49,18 @@ class FrameMergerTest {
     }
 
     @Test
+    fun `逐字显示的帧间距独立于实际渲染耗时`() {
+        val merger = FrameMerger(clockMs = { now }, minWaitMs = 30)
+        merger.recordCost(0L)
+        assertEquals(30L, merger.millisUntilNextUpdate())
+
+        now = 30L
+        assertEquals(0L, merger.millisUntilNextUpdate())
+        merger.recordCost(25L)
+        assertEquals(50L, merger.millisUntilNextUpdate())
+    }
+
+    @Test
     fun `负耗时不会把时钟往回调`() {
         val merger = merger()
         now = 500L

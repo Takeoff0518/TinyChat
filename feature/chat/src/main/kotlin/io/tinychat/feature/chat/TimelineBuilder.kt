@@ -52,6 +52,8 @@ data class ToolStep(
     val subtitle: String?,
     val entries: List<ToolEntry> = emptyList(),
     val failed: Boolean = false,
+    val searchFailure: String? = null,
+    val findPattern: String? = null,
 ) {
     val canOpen: Boolean get() = entries.isNotEmpty()
 
@@ -138,13 +140,16 @@ internal fun buildTimeline(fragments: List<TimelineFragment>): List<TimelineItem
                     ToolStep(
                         kind = ToolKind.SEARCH,
                         title = when {
-                            failed -> "联网搜索暂不可用"
+                            failed -> payload.reason?.takeIf { it.isNotBlank() }
+                                ?.let { "联网搜索暂不可用：$it" }
+                                ?: "联网搜索暂不可用"
                             entries.isEmpty() -> "未搜索到合适内容"
                             else -> "搜索到 ${entries.size} 个网页"
                         },
                         subtitle = payload.queries.joinToString(" ").takeIf { it.isNotBlank() },
                         entries = entries,
                         failed = failed,
+                        searchFailure = payload.reason,
                     ),
                 )
             }
@@ -175,6 +180,7 @@ internal fun buildTimeline(fragments: List<TimelineFragment>): List<TimelineItem
                         },
                         subtitle = null,
                         failed = failed,
+                        findPattern = payload.pattern,
                     ),
                 )
             }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="side_drawer_history">Historique des conversations</string>
+    <string name="side_drawer_usage">Utilisation et coûts</string>
+    <string name="side_drawer_close_history">Fermer l’historique des conversations</string>
+    <string name="side_drawer_close_usage">Fermer le panneau d’utilisation et de coûts</string>
+    <string name="side_drawer_close">Fermer le panneau latéral</string>
+</resources>

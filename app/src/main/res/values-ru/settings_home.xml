@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prefs_home_unconfigured">Не настроено</string>
+    <string name="prefs_home_provider_count">Поставщики: %1$d</string>
+    <string name="prefs_home_official_prompt">Промпт по умолчанию</string>
+    <string name="prefs_home_no_prompt">Нет</string>
+    <string name="prefs_home_crash">Сбой приложения</string>
+    <string name="prefs_home_chat">Чат</string>
+    <string name="prefs_home_diag">Диагностика</string>
+    <string name="app_chat_generation">Обработка диалога…</string>
+</resources>

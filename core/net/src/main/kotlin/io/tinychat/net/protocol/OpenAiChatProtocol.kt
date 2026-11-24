@@ -12,13 +12,13 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * OpenAI Chat Completions 协议（M8-1 / 决策 53 起带图片）。
  *
- * `messages[].content` 通常是字符串；这一轮带图片时变成内容数组
- * `[{"type":"text"}, {"type":"image_url","image_url":{"url":"data:…"}}]`。
- * 文件（PDF/Word）仍然只有官方 Files API 支持，第三方链路丢弃。
+ * `messages[].content` 通常是字符串；带图片或 PDF 时使用内容数组。
+ * 文本文件拼进用户消息，保留文件名与文件边界。
  *
  * 与官方 Messages 链路的三处差别，都在这里收口：
  * 1. 端点与鉴权（Bearer，而不是 `x-api-key`）；
@@ -32,12 +32,18 @@ object OpenAiChatProtocol {
 
     /**
      * 地址归一：用户可能填 `https://x/v1`、`https://x/v1/` 或只给域名。
-     * 已以 `/v1` 结尾就不重复拼（02 §12.6 的地址默认值就是这个形状）。
+     * 自带版本的地址直接沿用，例如智谱的 `/api/coding/paas/v4`。
      */
     fun endpoint(baseUrl: String): String {
+        require(baseUrl.trim().trimEnd('/').isNotEmpty()) { "API 地址不能为空" }
+        return "${apiBase(baseUrl)}/chat/completions"
+    }
+
+    private val versionSuffix = Regex("v[0-9]+")
+
+    internal fun apiBase(baseUrl: String): String {
         val base = baseUrl.trim().trimEnd('/')
-        require(base.isNotEmpty()) { "API 地址不能为空" }
-        return if (base.endsWith("/v1")) "$base/chat/completions" else "$base/v1/chat/completions"
+        return if (versionSuffix.matches(base.substringAfterLast('/'))) base else "$base/v1"
     }
 
     fun build(
@@ -85,6 +91,14 @@ object OpenAiChatProtocol {
             put("model", command.model)
             put("messages", messages)
             put("stream", true)
+            if (command.enforceOutputLimit && command.maxOutputTokens > 0) {
+                val outputField = if (baseUrl.toHttpUrlOrNull()?.host == "api.openai.com") {
+                    "max_completion_tokens"
+                } else {
+                    "max_tokens"
+                }
+                put(outputField, command.maxOutputTokens)
+            }
             if (includeUsage) {
                 put(
                     "stream_options",
@@ -142,9 +156,9 @@ object OpenAiChatProtocol {
     /**
      * 一条消息的 `content`（决策 53）：
      *
-     * - 没有图片 → 字符串（元信息拼在最前面），与改动前的报文逐字节一致；
-     * - 有图片 → 数组：一个 text 元素（同样把元信息拼进去）+ 若干 `image_url`；
-     * - 既没有文字也没有图片 → null（这条消息整个跳过）。
+     * - 没有内联图片或 PDF → 字符串（元信息拼在最前面）；
+     * - 有图片或 PDF → 内容数组，保留附件块，合并文本；
+     * - 没有任何内容 → null（跳过这条消息）。
      */
     private fun contentOf(message: WireMessage, reminder: String?): JsonElement? {
         val text = textOf(message)
@@ -153,18 +167,10 @@ object OpenAiChatProtocol {
             text.isEmpty() -> reminder
             else -> "$reminder\n\n$text"
         }
-        val images = imageUrls(message)
-        if (images.isEmpty()) return merged.takeIf { it.isNotEmpty() }?.let(::JsonPrimitive)
-        // 顺序与官方链路一致：图片在前、文本在后（03 §6.5）
+        val attachments = attachmentBlocks(message)
+        if (attachments.isEmpty()) return merged.takeIf { it.isNotEmpty() }?.let(::JsonPrimitive)
         return buildJsonArray {
-            images.forEach { url ->
-                add(
-                    buildJsonObject {
-                        put("type", "image_url")
-                        put("image_url", buildJsonObject { put("url", url) })
-                    },
-                )
-            }
+            attachments.forEach(::add)
             if (merged.isNotEmpty()) {
                 add(
                     buildJsonObject {
@@ -176,14 +182,17 @@ object OpenAiChatProtocol {
         }
     }
 
-    /** 数组内容里的 `image_url` 块（官方链路的历史图片不会被转成这个形状，自然不会误抓） */
-    private fun imageUrls(message: WireMessage): List<String> {
+    private fun attachmentBlocks(message: WireMessage): List<JsonObject> {
         val content = message.content as? JsonArray ?: return emptyList()
         return content.mapNotNull { element ->
             val obj = element as? JsonObject ?: return@mapNotNull null
-            if ((obj["type"] as? JsonPrimitive)?.contentOrNull != "image_url") return@mapNotNull null
-            val url = ((obj["image_url"] as? JsonObject)?.get("url") as? JsonPrimitive)?.contentOrNull
-            url?.takeIf { it.isNotBlank() }
+            val field = when ((obj["type"] as? JsonPrimitive)?.contentOrNull) {
+                "image_url" -> "image_url" to "url"
+                "file" -> "file" to "file_data"
+                else -> return@mapNotNull null
+            }
+            val value = (obj[field.first] as? JsonObject)?.get(field.second) as? JsonPrimitive
+            obj.takeUnless { value?.contentOrNull.isNullOrBlank() }
         }
     }
 

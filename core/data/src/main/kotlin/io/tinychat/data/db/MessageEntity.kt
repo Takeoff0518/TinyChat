@@ -58,4 +58,7 @@ data class MessageEntity(
     @ColumnInfo(name = "reminder_snapshot") val reminderSnapshot: String? = null,
     /** v2：本轮思考 signature（仅本地，继续生成要回传） */
     @ColumnInfo(name = "thinking_signature") val thinkingSignature: String? = null,
+    /** v6：从本消息及其祖先提炼出来的上下文。原始消息保留，摘要只用于后续请求。 */
+    @ColumnInfo(name = "context_summary") val contextSummary: String? = null,
+    @ColumnInfo(name = "context_summary_tokens") val contextSummaryTokens: Int? = null,
 )

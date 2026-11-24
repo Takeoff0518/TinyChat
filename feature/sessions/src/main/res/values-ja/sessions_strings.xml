@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sessions_multi_select">複数選択</string>
+    <string name="sessions_settings">設定</string>
+    <string name="sessions_remove_selected">選択したチャットが履歴から削除されます。</string>
+    <string name="sessions_delete">削除</string>
+    <string name="sessions_cancel">キャンセル</string>
+    <string name="sessions_delete_chat">このチャットを削除しますか？</string>
+    <string name="sessions_remove_chat">「%1$s」が履歴から削除されます。</string>
+    <string name="sessions_search">チャットを検索…</string>
+    <string name="sessions_close_search">検索を閉じる</string>
+    <string name="sessions_clear_search">検索語を消去</string>
+    <string name="sessions_select_chats">チャットを選択</string>
+    <string name="sessions_close_selection">選択モードを終了</string>
+    <string name="sessions_pin">ピン留め</string>
+    <string name="sessions_unpin">ピン留めを解除</string>
+    <string name="sessions_empty">チャットはまだありません</string>
+    <string name="sessions_rename">名前を変更</string>
+    <string name="sessions_chat_actions">チャットの操作</string>
+    <string name="sessions_no_results">一致するチャットがありません</string>
+    <string name="sessions_rename_chat">チャットの名前を変更</string>
+    <string name="sessions_save">保存</string>
+    <string name="sessions_new_chat">新しいチャット</string>
+    <string name="sessions_group_pinned">ピン留め済み</string>
+    <string name="sessions_group_today">今日</string>
+    <string name="sessions_group_yesterday">昨日</string>
+    <string name="sessions_group_week">過去 7 日間</string>
+    <string name="sessions_group_month">過去 30 日間</string>
+    <string name="sessions_group_earlier">それ以前</string>
+    <plurals name="sessions_delete_selected">
+        <item quantity="other">チャット %d 件を削除しますか？</item>
+    </plurals>
+</resources>

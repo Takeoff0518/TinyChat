@@ -32,6 +32,7 @@ data class TcPalette(
     val bubble: Color,
     val bg: Color,
     val bgLayer2: Color,
+    val settingsBackground: Color,
     /** 列表「当前项」底色（抽屉里高亮正在聊的那条） */
     val selector: Color,
     val labelPrimary: Color,
@@ -60,6 +61,7 @@ val LightPalette = TcPalette(
     bubble = Color(0xFFEDF3FE),
     bg = Color(0xFFFFFFFF),
     bgLayer2 = Color(0xFFFFFFFF),
+    settingsBackground = Color(0xFFF6F6F6),
     selector = Color(0xFFF2F3F5),
     labelPrimary = Color(0xFF0F1115),
     labelSecondary = Color(0xFF61666B),
@@ -87,6 +89,7 @@ val DarkPalette = TcPalette(
     bubble = Color(0xFF2C2C2E),
     bg = Color(0xFF151517),
     bgLayer2 = Color(0xFF2C2C2E),
+    settingsBackground = Color(0xFF151517),
     selector = Color(0xFF232326),
     labelPrimary = Color(0xFFF9FAFB),
     labelSecondary = Color(0xFFCFD3D6),

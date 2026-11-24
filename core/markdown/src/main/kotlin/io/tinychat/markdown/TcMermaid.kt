@@ -1,5 +1,6 @@
 ﻿package io.tinychat.markdown
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -83,13 +84,13 @@ internal fun TcMermaidBlock(code: String, style: TextStyle) {
             ) {
                 Icon(
                     imageVector = if (showCode) TcIcons.Browse else TcIcons.Data,
-                    contentDescription = if (showCode) "查看图表" else "查看代码",
+                    contentDescription = if (showCode) stringResource(R.string.markdown_show_diagram) else stringResource(R.string.markdown_show_code),
                     tint = palette.labelTertiary,
                     modifier = Modifier.size(14.dp),
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = if (showCode) "查看图表" else "查看代码",
+                    text = if (showCode) stringResource(R.string.markdown_show_diagram) else stringResource(R.string.markdown_show_code),
                     style = MarkdownCodeBannerStyle,
                     color = palette.labelTertiary,
                 )
@@ -102,8 +103,13 @@ internal fun TcMermaidBlock(code: String, style: TextStyle) {
             TcCodeText(code = code, language = SyntaxLanguage.MERMAID, style = style)
         } else {
             error?.let {
+                val detail = when (it) {
+                    "渲染超时" -> stringResource(R.string.markdown_render_timeout)
+                    "渲染失败" -> stringResource(R.string.markdown_render_failure)
+                    else -> it
+                }
                 Text(
-                    text = "图表渲染失败：${it.take(200)}",
+                    text = stringResource(R.string.markdown_diagram_error_detail, detail.take(200)),
                     style = MarkdownCodeBannerStyle,
                     color = palette.labelTertiary,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -147,7 +153,7 @@ private fun MermaidImage(code: String, onError: (String) -> Unit) {
         if (bitmap != null) {
             androidx.compose.foundation.Image(
                 bitmap = bitmap,
-                contentDescription = "Mermaid 图表",
+                contentDescription = stringResource(R.string.markdown_mermaid_diagram),
                 contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -163,7 +169,7 @@ private fun MermaidImage(code: String, onError: (String) -> Unit) {
                 contentAlignment = androidx.compose.ui.Alignment.Center,
             ) {
                 Text(
-                    text = if (result?.error != null) "图表渲染失败" else "图表渲染中",
+                    text = if (result?.error != null) stringResource(R.string.markdown_diagram_error) else stringResource(R.string.markdown_rendering_diagram),
                     style = MarkdownCodeBannerStyle,
                     color = palette.labelTertiary,
                 )

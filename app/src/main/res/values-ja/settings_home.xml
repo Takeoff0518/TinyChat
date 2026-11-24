@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prefs_home_unconfigured">未設定</string>
+    <string name="prefs_home_provider_count">提供元 %1$d 件</string>
+    <string name="prefs_home_official_prompt">標準プロンプト</string>
+    <string name="prefs_home_no_prompt">なし</string>
+    <string name="prefs_home_crash">アプリのクラッシュ</string>
+    <string name="prefs_home_chat">チャット</string>
+    <string name="prefs_home_diag">診断情報</string>
+    <string name="app_chat_generation">会話を処理中…</string>
+</resources>

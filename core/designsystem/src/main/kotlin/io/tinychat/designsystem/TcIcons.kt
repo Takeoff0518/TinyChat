@@ -91,6 +91,22 @@ object TcIcons {
 
     val ChevronUp: ImageVector by lazy { strokeIcon("tc_chevron_up", "M7,14 L12,9 L17,14") }
 
+    val Account: ImageVector by lazy {
+        strokeIcon("tc_account", "M12,4 A4,4 0 1,0 12,12 A4,4 0 1,0 12,4 M4,21 C4,13 20,13 20,21")
+    }
+    val TypeSize: ImageVector by lazy {
+        strokeIcon("tc_type_size", "M2,18 L6,9 L10,18 M3.8,14.5 H8.2 M12,18 L17,5 L22,18 M14,13 H20")
+    }
+    val Location: ImageVector by lazy {
+        strokeIcon("tc_location", "M12,22 C10,20 5,15 5,10 A7,7 0 1,1 19,10 C19,15 14,20 12,22 Z M12,8 A2,2 0 1,0 12,12 A2,2 0 1,0 12,8")
+    }
+    val Usage: ImageVector by lazy {
+        strokeIcon("tc_usage", "M4,19 H21 M8,15 V11 M13,15 V8 M18,15 V5")
+    }
+    val Info: ImageVector by lazy {
+        strokeIcon("tc_info", "M12,2.5 A9.5,9.5 0 1,0 12,21.5 A9.5,9.5 0 1,0 12,2.5 M12,11 V17 M12,7 V7.2")
+    }
+
     /** 多选（chat-demo 无素材）：方框 + 勾 */
     val MultiSelect: ImageVector by lazy {
         strokeIcon("tc_multi_select", "M4,6 H20 V20 H4 Z M8,13 L11,16 L16,10")

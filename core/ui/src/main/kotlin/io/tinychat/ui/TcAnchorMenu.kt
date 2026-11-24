@@ -128,7 +128,6 @@ fun TcAnchorMenu(
         Column(
             modifier = Modifier
                 .graphicsLayer {
-                    // 进来从 0.96 放到 1，出去原路收回去：有点「弹出来」的意思，又不至于夸张
                     scaleX = 0.96f + 0.04f * progress
                     scaleY = 0.96f + 0.04f * progress
                     alpha = progress

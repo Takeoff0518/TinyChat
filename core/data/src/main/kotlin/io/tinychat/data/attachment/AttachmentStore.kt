@@ -6,11 +6,14 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import android.util.Base64
 import io.tinychat.net.transport.ChatException
 import io.tinychat.model.ErrorKind
+import java.io.DataInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.nio.ByteBuffer
 import java.util.UUID
 
 /**
@@ -34,6 +37,14 @@ data class PickedFile(
 
 /** 落盘结果：原件绝对路径 + 实际大小 */
 data class SavedFile(val path: String, val size: Long)
+
+enum class InlineDocumentType(val maxBytes: Long, val limit: String) {
+    PDF(8L * 1024 * 1024, "8 MiB"),
+    TEXT(512L * 1024, "512 KiB"),
+    WORD(16L * 1024 * 1024, "16 MiB"),
+    WORKBOOK(16L * 1024 * 1024, "16 MiB"),
+    PRESENTATION(16L * 1024 * 1024, "16 MiB"),
+}
 
 /**
  * 附件文件仓库（M4-1/2/3）：目录布局按 02 §3.4。
@@ -60,7 +71,36 @@ class AttachmentStore(private val context: Context) {
         /** 第三方视觉的 JPEG 质量 */
         const val VISION_QUALITY = 85
 
+        const val MAX_INLINE_REQUEST_BYTES = 16L * 1024 * 1024
+
+        private const val MAX_VISION_BYTES = 3L * 1024 * 1024
+
         private const val COPY_BUFFER = 64 * 1024
+        private const val DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        private const val XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        private const val PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+        private val TEXT_MIMES = setOf("application/json", "application/xml", "application/yaml", "application/x-yaml")
+        private val TEXT_EXTENSIONS = setOf(
+            "txt", "md", "markdown", "log", "csv", "tsv", "json", "jsonl", "xml", "yaml", "yml", "toml", "ini",
+            "html", "htm", "css", "js", "ts", "py", "java", "kt", "kts", "c", "h", "cpp", "hpp", "rs", "go", "sql",
+        )
+
+        val supportsLocalPdfText: Boolean get() = PdfAttachmentText.available
+
+        fun inlineDocumentType(fileName: String, mime: String?): InlineDocumentType? {
+            val mediaType = mime.orEmpty().substringBefore(';').trim().lowercase()
+            val extension = fileName.substringAfterLast('.', "").lowercase()
+            return when {
+                mediaType == "application/pdf" || extension == "pdf" -> InlineDocumentType.PDF
+                mediaType == DOCX_MIME || extension == "docx" -> InlineDocumentType.WORD
+                mediaType == XLSX_MIME || extension == "xlsx" -> InlineDocumentType.WORKBOOK
+                mediaType == PPTX_MIME || extension == "pptx" -> InlineDocumentType.PRESENTATION
+                mediaType.startsWith("text/") || mediaType in TEXT_MIMES || extension in TEXT_EXTENSIONS ->
+                    InlineDocumentType.TEXT
+                else -> null
+            }
+        }
     }
 
     private val attachmentsRoot = File(context.filesDir, "attachments")
@@ -126,23 +166,26 @@ class AttachmentStore(private val context: Context) {
     /**
      * 把原件拷进 `attachments/{messageId}/`。超上限直接拒（不写半截文件）。
      */
-    fun save(messageId: Long, picked: PickedFile): SavedFile {
-        if (picked.size > MAX_BYTES) {
-            throw ChatException(ErrorKind.UPLOAD, message = "附件超过 100MiB")
-        }
+    fun save(messageId: Long, picked: PickedFile, documentType: InlineDocumentType? = null): SavedFile {
+        val maxBytes = documentType?.maxBytes ?: MAX_BYTES
+        val sizeError = "附件「${picked.fileName}」超过 ${documentType?.limit ?: "100 MiB"}"
+        if (picked.size > maxBytes) throw ChatException(ErrorKind.UPLOAD, message = sizeError)
         val dir = File(attachmentsRoot, messageId.toString())
         dir.mkdirs()
         val target = File(dir, "${picked.id}_${picked.fileName.safeName()}")
-        val input = context.contentResolver.openInputStream(picked.uri)
-            ?: throw ChatException(ErrorKind.UPLOAD, message = "无法打开该文件，请重新选择")
-        input.use { source ->
-            target.outputStream().use { sink ->
-                val copied = copyLimited(source, sink)
-                if (copied < 0) {
-                    target.delete()
-                    throw ChatException(ErrorKind.UPLOAD, message = "附件超过 100MiB")
+        try {
+            val input = context.contentResolver.openInputStream(picked.uri)
+                ?: throw ChatException(ErrorKind.UPLOAD, message = "无法打开该文件，请重新选择")
+            input.use { source ->
+                target.outputStream().use { sink ->
+                    if (copyLimited(source, sink, maxBytes) < 0) {
+                        throw ChatException(ErrorKind.UPLOAD, message = sizeError)
+                    }
                 }
             }
+        } catch (e: Exception) {
+            target.delete()
+            throw e
         }
         return SavedFile(path = target.absolutePath, size = target.length())
     }
@@ -193,17 +236,67 @@ class AttachmentStore(private val context: Context) {
      * 失败返回 null（调用方决定报错还是跳过）。
      */
     fun visionDataUri(localPath: String): String? = runCatching {
-        val source = File(localPath)
-        if (!source.isFile || source.length() <= 0) return null
+        val source = storedFile(localPath) ?: return null
         val derived = visionFile(localPath)
         val target = if (derived.isFile && derived.length() > 0) {
             derived
         } else {
             encodeVision(source, derived) ?: return null
         }
-        "data:image/jpeg;base64," +
-            android.util.Base64.encodeToString(target.readBytes(), android.util.Base64.NO_WRAP)
+        val bytes = readAttachmentBytes(target.absolutePath, MAX_VISION_BYTES) ?: return null
+        "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
     }.getOrNull()
+
+    fun pdfDataUri(localPath: String): String? = runCatching {
+        val bytes = readAttachmentBytes(localPath, InlineDocumentType.PDF.maxBytes) ?: return null
+        val header = bytes.decodeToString(endIndex = minOf(bytes.size, 1024))
+        if (!header.contains("%PDF-")) return null
+        "data:application/pdf;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+    }.getOrNull()
+
+    fun documentText(localPath: String): String? = runCatching {
+        val bytes = readAttachmentBytes(localPath, InlineDocumentType.TEXT.maxBytes) ?: return null
+        val charset = when {
+            bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte() -> Charsets.UTF_16LE
+            bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte() -> Charsets.UTF_16BE
+            else -> Charsets.UTF_8
+        }
+        charset.newDecoder().decode(ByteBuffer.wrap(bytes)).toString().removePrefix("\uFEFF")
+            .takeIf { text -> text.isNotBlank() && text.none { it.isISOControl() && it !in "\n\r\t\u000C" } }
+    }.getOrNull()
+
+    internal fun extractedDocumentText(localPath: String, type: InlineDocumentType): String? = try {
+        val file = storedFile(localPath)
+        if (file == null || file.length() !in 1..type.maxBytes) {
+            null
+        } else {
+            when (type) {
+                InlineDocumentType.PDF -> PdfAttachmentText.read(file)
+                InlineDocumentType.TEXT -> documentText(localPath)
+                else -> OfficeAttachmentText.read(file, type)
+            }
+        }
+    } catch (e: AttachmentTextTooLong) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun storedFile(path: String): File? {
+        val file = File(path).canonicalFile
+        return file.takeIf { it.isFile && it.toPath().startsWith(attachmentsRoot.canonicalFile.toPath()) }
+    }
+
+    private fun readAttachmentBytes(path: String, maxBytes: Long): ByteArray? {
+        val file = storedFile(path) ?: return null
+        val length = file.length()
+        if (length !in 1..maxBytes) return null
+        return DataInputStream(file.inputStream().buffered()).use { source ->
+            val bytes = ByteArray(length.toInt())
+            source.readFully(bytes)
+            bytes.takeIf { source.read() == -1 }
+        }
+    }
 
     // —— 内部 ——
 
@@ -285,7 +378,7 @@ class AttachmentStore(private val context: Context) {
     }
 
     /** 流式拷贝；超过上限返回 -1（调用方负责删半截文件） */
-    private fun copyLimited(source: InputStream, sink: java.io.OutputStream): Long {
+    private fun copyLimited(source: InputStream, sink: java.io.OutputStream, maxBytes: Long): Long {
         val buffer = ByteArray(COPY_BUFFER)
         var total = 0L
         while (true) {
@@ -296,7 +389,7 @@ class AttachmentStore(private val context: Context) {
             }
             if (read <= 0) break
             total += read
-            if (total > MAX_BYTES) return -1
+            if (total > maxBytes) return -1
             sink.write(buffer, 0, read)
         }
         return total
@@ -319,10 +412,10 @@ class AttachmentStore(private val context: Context) {
         "csv" -> "text/csv"
         "json" -> "application/json"
         "doc" -> "application/msword"
-        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "docx" -> DOCX_MIME
         "ppt" -> "application/vnd.ms-powerpoint"
-        "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "pptx" -> PPTX_MIME
+        "xlsx" -> XLSX_MIME
         "epub" -> "application/epub+zip"
         else -> null
     }

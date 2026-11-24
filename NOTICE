@@ -28,6 +28,11 @@ deepseek-ai/chat-demo
 
 二、随安装包分发的第三方资源
 
+deepseek-ai/deepseek-harness 0.1.2-rc.1
+    https://github.com/deepseek-ai/deepseek-harness
+    许可证：MIT，Copyright (c) 2026 DeepSeek
+    用途：专家模式的系统提示词，移植自 Web 标准模式快照。许可证原文随 APK 分发。
+
 KaTeX（含随包的 woff2 字体）
     https://github.com/KaTeX/KaTeX
     许可证：MIT
@@ -66,7 +71,7 @@ Mermaid
 五、应用图标与品牌图
 
     app 的启动图标、核心界面里的角色图，以及文档与 README 使用的同一张图
-    （core/designsystem/src/main/res/drawable-nodpi/tc_logo.png、docs/assets/logo.png），
+    （core/designsystem/src/main/res/drawable-nodpi/tc_logo.webp、docs/assets/logo.png），
     为本项目专用素材。
 
 

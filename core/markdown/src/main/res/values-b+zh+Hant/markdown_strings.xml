@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="markdown_collapse_code">收起</string>
+    <string name="markdown_copied">已複製</string>
+    <string name="markdown_copy">複製</string>
+    <string name="markdown_copy_code">複製程式碼</string>
+    <string name="markdown_diagram_error">圖表渲染失敗</string>
+    <string name="markdown_diagram_error_detail">圖表渲染失敗：%s</string>
+    <string name="markdown_expand_code">展開全部（共 %d 行）</string>
+    <string name="markdown_mermaid_diagram">Mermaid 圖表</string>
+    <string name="markdown_render_failure">渲染失敗</string>
+    <string name="markdown_render_timeout">渲染逾時</string>
+    <string name="markdown_rendering_diagram">圖表渲染中</string>
+    <string name="markdown_rendering_math">公式渲染中</string>
+    <string name="markdown_show_code">檢視程式碼</string>
+    <string name="markdown_show_diagram">檢視圖表</string>
+</resources>

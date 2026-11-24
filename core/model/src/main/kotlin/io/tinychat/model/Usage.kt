@@ -105,14 +105,23 @@ enum class ErrorKind(val wire: String) {
         FILE_INVALID -> "附件已失效，请重新上传"
     }
 
-    /** 行内重试提示（贴在消息下方右侧的灰字）；官方文案是「请检查网络后重试」 */
-    val retryHint: String
-        get() = when (this) {
+    /**
+     * 行内重试提示（贴在消息下方右侧的灰字）。
+     *
+     * [detail] 是底层真实原因（「请求超时：超过 120 秒没有收到数据」「域名解析失败」这类）。
+     * 网络类错误有详情就用详情——以前一律显示「请检查网络后重试」，
+     * 用户和我们都没法区分是超时、DNS 还是根本没连上。
+     */
+    fun retryHint(detail: String? = null): String {
+        val specific = detail?.trim().orEmpty()
+        if (this == NETWORK && specific.isNotEmpty()) return specific
+        return when (this) {
             NETWORK -> "请检查网络后重试"
             HTTP_429 -> "操作太频繁，稍后再试"
             HTTP_5XX -> "服务繁忙，稍后再试"
             else -> userMessage
         }
+    }
 
     /** 自动重试上限：限流只补一次，服务端故障/网络抖动最多两次 */
     val maxAutoRetries: Int

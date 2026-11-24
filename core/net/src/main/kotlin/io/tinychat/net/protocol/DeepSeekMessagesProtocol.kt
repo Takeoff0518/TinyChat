@@ -2,6 +2,8 @@ package io.tinychat.net.protocol
 
 import io.tinychat.model.Capabilities
 import io.tinychat.model.PromptMode
+import io.tinychat.model.ProviderKind
+import io.tinychat.model.ProviderProtocol
 import io.tinychat.model.ThinkingEffort
 import io.tinychat.model.ThinkingMode
 import io.tinychat.model.prompt.PromptSeeds
@@ -106,7 +108,9 @@ data class PreparedRequest(
     val headers: Map<String, String>,
     val bodyJson: String,
     /** 决定用哪个流解码器（`ChatStreamRunner` 据此选 assembler） */
-    val protocol: io.tinychat.model.ProviderProtocol = io.tinychat.model.ProviderProtocol.DEEPSEEK_MESSAGES,
+    val protocol: ProviderProtocol = ProviderProtocol.DEEPSEEK_MESSAGES,
+    /** 传输层据此应用服务商的网络等待策略。 */
+    val providerKind: ProviderKind? = null,
 )
 
 /**
@@ -121,7 +125,7 @@ data class ChatCommand(
     val effort: ThinkingEffort? = null,
     /** 第三方思考参数形态（M8-1）；DeepSeek 忽略，它只认 capabilities.effort */
     val thinking: ThinkingMode = ThinkingMode.NONE,
-    /** 输出上限；Anthropic Messages 必填，DeepSeek 不传 */
+    /** 输出上限；Anthropic Messages 必填。 */
     val maxOutputTokens: Int = 8_192,
     val searchEnabled: Boolean = false,
     /** 仅会话首轮为 true；拿到标题后永久关掉（02 §5.3） */
@@ -129,6 +133,8 @@ data class ChatCommand(
     val messages: List<WireMessage>,
     /** 本轮含文件/图片块 → 需要 anthropic-beta 头 */
     val hasFileBlocks: Boolean = false,
+    /** 压缩上下文时限制摘要长度，即使协议允许省略输出上限。 */
+    val enforceOutputLimit: Boolean = false,
 )
 
 /**
@@ -162,6 +168,7 @@ object DeepSeekMessagesProtocol {
             system = resolveSystem(command),
             thinking = resolveThinking(command),
             outputConfig = resolveEffort(command),
+            maxTokens = command.maxOutputTokens.takeIf { command.enforceOutputLimit && it > 0 },
             tools = resolveTools(command),
             safetyCheck = if (command.capabilities.safetyCheck) SafetyCheck.HIGH else null,
             title = if (command.capabilities.serverSideTitle && command.includeTitle) {

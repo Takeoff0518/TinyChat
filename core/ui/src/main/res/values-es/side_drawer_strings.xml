@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="side_drawer_history">Historial de chats</string>
+    <string name="side_drawer_usage">Uso y costes</string>
+    <string name="side_drawer_close_history">Cerrar el historial de chats</string>
+    <string name="side_drawer_close_usage">Cerrar el panel de uso y costes</string>
+    <string name="side_drawer_close">Cerrar el panel lateral</string>
+</resources>

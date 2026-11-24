@@ -1,7 +1,8 @@
 package io.tinychat.feature.settings
 
+import android.content.Context
+import android.net.Uri
 import androidx.activity.compose.BackHandler
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,9 +22,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -38,13 +39,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.tinychat.designsystem.TcIcons
 import io.tinychat.designsystem.TcTheme
 import io.tinychat.designsystem.TcTypography
+import io.tinychat.model.DiscoveredModel
 import io.tinychat.model.KnownProviders
 import io.tinychat.model.ModelInfo
 import io.tinychat.model.Provider
@@ -53,10 +60,11 @@ import io.tinychat.model.ProviderKind
 import io.tinychat.model.ProviderNaming
 import io.tinychat.model.ProviderProtocol
 import io.tinychat.model.ThinkingMode
+import io.tinychat.model.mergeDiscoveredModels
+import io.tinychat.ui.TcAlertDialog
 import io.tinychat.ui.TcButton
 import io.tinychat.ui.TcIconButton
 import io.tinychat.ui.TcTopBar
-import io.tinychat.designsystem.TcIcons
 import kotlinx.coroutines.launch
 
 /**
@@ -85,8 +93,8 @@ fun ProviderListScreen(
             .background(palette.bg),
     ) {
         TcTopBar(
-            title = "服务商与 API Key",
-            leading = { TcIconButton(TcIcons.Back, "返回", onBack) },
+            title = stringResource(R.string.prefs_detail_providers),
+            leading = { TcIconButton(TcIcons.Back, stringResource(R.string.prefs_detail_back), onBack) },
         )
 
         Column(
@@ -94,13 +102,6 @@ fun ProviderListScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            Text(
-                text = "填入各服务商的 API 密钥即可使用其模型。",
-                style = TcTypography.labelMedium,
-                color = palette.labelTertiary,
-                modifier = Modifier.padding(bottom = 14.dp),
-            )
-
             providers.forEach { provider ->
                 ProviderCard(
                     provider = provider,
@@ -121,7 +122,7 @@ fun ProviderListScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "＋ 添加模型提供商",
+                    text = "＋ ${stringResource(R.string.prefs_detail_provider_add)}",
                     style = TcTypography.bodyMedium,
                     color = palette.labelSecondary,
                 )
@@ -131,17 +132,17 @@ fun ProviderListScreen(
     }
 
     pendingDelete?.let { provider ->
-        AlertDialog(
+        TcAlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("删除 ${provider.displayName}？") },
-            text = { Text("该服务商下的会话仍可查看，换一个服务商就能继续对话。本机保存的密钥会一并删除。") },
+            title = { Text(stringResource(R.string.prefs_detail_provider_delete, provider.localizedName())) },
+            text = { Text(stringResource(R.string.prefs_detail_provider_delete_warning)) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDelete = null
                     onDelete(provider)
-                }) { Text("删除", color = palette.danger) }
+                }) { Text(stringResource(R.string.prefs_detail_delete), color = palette.danger) }
             },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消", color = TcTheme.palette.labelSecondary) } },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.prefs_detail_cancel), color = TcTheme.palette.labelSecondary) } },
         )
     }
 }
@@ -164,7 +165,7 @@ private fun ProviderCard(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = provider.displayName,
+            text = provider.localizedName(),
             style = TcTypography.bodyLarge,
             color = palette.labelPrimary,
             maxLines = 1,
@@ -172,22 +173,10 @@ private fun ProviderCard(
             modifier = Modifier.weight(1f, fill = false),
         )
         Spacer(Modifier.width(6.dp))
-        // 「自定义」只标用户自己填的服务商；目录里的 OpenCode Go 不算
-        if (provider.kind == ProviderKind.OPENAI_COMPATIBLE) {
-            Text(
-                text = "自定义",
-                fontSize = 11.sp,
-                color = palette.labelTertiary,
-                modifier = Modifier
-                    .background(palette.bgLayer2, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 5.dp, vertical = 1.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-        }
         StatusDot(provider = provider, hasKey = hasKey)
         Spacer(Modifier.weight(1f))
         Text(
-            text = "编辑",
+            text = stringResource(R.string.prefs_detail_edit),
             style = TcTypography.bodyMedium,
             color = palette.brand,
             modifier = Modifier
@@ -196,7 +185,7 @@ private fun ProviderCard(
         )
         if (onDelete != null) {
             Text(
-                text = "删除",
+                text = stringResource(R.string.prefs_detail_delete),
                 style = TcTypography.bodyMedium,
                 color = palette.danger,
                 modifier = Modifier
@@ -246,9 +235,10 @@ fun ProviderEditorScreen(
     onSave: suspend (Provider, String?) -> Unit,
     onCheck: suspend (Provider, String?) -> String?,
     onClearKey: suspend (String) -> Unit,
-    onFetchModels: suspend (Provider, String?) -> List<String>,
+    onFetchModels: suspend (Provider, String?) -> List<DiscoveredModel>,
 ) {
     val palette = TcTheme.palette
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val adding = provider == null
     // 目录里的预设可以重复添加（决策 48）：两块不同的 Key、两个网关、两个地区互不影响
@@ -258,6 +248,8 @@ fun ProviderEditorScreen(
 
     var tab by remember { mutableStateOf(EditorTab.CATALOG) }
     var pickedCatalog by remember { mutableStateOf<Provider?>(null) }
+    var choosingCatalog by remember { mutableStateOf(true) }
+    val formScroll = rememberScrollState()
     var id by remember { mutableStateOf(provider?.id.orEmpty()) }
     var name by remember { mutableStateOf(provider?.displayName.orEmpty()) }
     var baseUrl by remember { mutableStateOf(provider?.baseUrl.orEmpty()) }
@@ -268,15 +260,10 @@ fun ProviderEditorScreen(
     var busy by remember { mutableStateOf(false) }
     var fetching by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var status by remember {
-        mutableStateOf(
-            when (provider?.check) {
-                ProviderCheck.OK -> "可用"
-                ProviderCheck.FAILED -> provider.checkMessage ?: "校验失败"
-                else -> null
-            },
-        )
-    }
+    var checkStatus by remember { mutableStateOf(provider?.check ?: ProviderCheck.UNKNOWN) }
+    var checkMessage by remember { mutableStateOf(provider?.checkMessage) }
+    var checking by remember { mutableStateOf(false) }
+    var keyCleared by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
     // 离开保护（02 §10.2）：打开这一页时记一份快照，任何一项与之不同就要问一句。
     // 取消按钮已经删掉，返回是唯一的出口，没有这道确认就会静默丢掉填了一半的密钥。
@@ -307,14 +294,14 @@ fun ProviderEditorScreen(
 
     // 预设解锁（决策 48）：任何服务商都能改地址、协议、模型，也能删；预设只负责预填
     val catalogMode = adding && tab == EditorTab.CATALOG
-    val effective = pickedCatalog ?: provider
+    val effective = if (catalogMode) pickedCatalog else provider
     val kindOf = effective?.kind ?: ProviderKind.OPENAI_COMPATIBLE
     // 模型始终以这一份可变状态为准（选目录服务商时已把它的模型灌进来）；
     // 第一版目录模式读的是 pickedCatalog.models，导致「拉取成功但界面不更新」
     val currentModels = models
     val canSave = when {
         busy -> false
-        catalogMode -> pickedCatalog != null && name.isNotBlank() && baseUrl.isNotBlank() &&
+        catalogMode -> !choosingCatalog && pickedCatalog != null && name.isNotBlank() && baseUrl.isNotBlank() &&
             currentModels.isNotEmpty()
         else -> name.isNotBlank() && baseUrl.isNotBlank() && currentModels.isNotEmpty() &&
             (provider != null || id.matches(ID_REGEX))
@@ -344,13 +331,13 @@ fun ProviderEditorScreen(
     fun save() {
         val candidate = draftProvider()
         val localError = when {
-            candidate.displayName.isBlank() -> "请填写显示名称"
-            candidate.baseUrl.isBlank() -> "请填写 API 地址"
-            !candidate.baseUrl.startsWith("https://") -> "API 地址需要以 https:// 开头"
-            candidate.models.isEmpty() -> "至少添加一个模型"
+            candidate.displayName.isBlank() -> context.getString(R.string.prefs_detail_provider_name_required)
+            candidate.baseUrl.isBlank() -> context.getString(R.string.prefs_detail_provider_url_required)
+            !candidate.baseUrl.startsWith("https://") -> context.getString(R.string.prefs_detail_provider_https_required)
+            candidate.models.isEmpty() -> context.getString(R.string.prefs_detail_provider_model_required)
             !adding -> null
-            existing.any { it.id == candidate.id } -> "Provider ID 已被占用"
-            !candidate.id.matches(ID_REGEX) -> "Provider ID 需要以小写字母开头"
+            existing.any { it.id == candidate.id } -> context.getString(R.string.prefs_detail_provider_id_taken)
+            !candidate.id.matches(ID_REGEX) -> context.getString(R.string.prefs_detail_provider_id_invalid)
             else -> null
         }
         if (localError != null) {
@@ -363,7 +350,7 @@ fun ProviderEditorScreen(
             runCatching {
                 onSave(candidate, key.trim().takeIf { it.isNotEmpty() })
                 onBack()
-            }.onFailure { error = it.message ?: "保存失败" }
+            }.onFailure { error = it.message ?: context.getString(R.string.prefs_detail_save_failed) }
             busy = false
         }
     }
@@ -372,10 +359,13 @@ fun ProviderEditorScreen(
         val candidate = draftProvider()
         scope.launch {
             busy = true
-            status = "校验中…"
+            checking = true
             val message = runCatching { onCheck(candidate, key.trim().takeIf { it.isNotEmpty() }) }
-                .getOrElse { it.message ?: "校验失败" }
-            status = message ?: "可用"
+                .getOrElse { it.message ?: context.getString(R.string.prefs_detail_provider_check_failed) }
+            checkMessage = message
+            checkStatus = if (message == null) ProviderCheck.OK else ProviderCheck.FAILED
+            checking = false
+            keyCleared = false
             busy = false
         }
     }
@@ -386,79 +376,94 @@ fun ProviderEditorScreen(
             .background(palette.bg),
     ) {
         TcTopBar(
-            title = provider?.displayName ?: "添加模型提供商",
-            leading = { TcIconButton(TcIcons.Back, "返回", ::leave) },
+            title = provider?.localizedName() ?: stringResource(R.string.prefs_detail_provider_add),
+            leading = { TcIconButton(TcIcons.Back, stringResource(R.string.prefs_detail_back), ::leave) },
         )
 
         Column(
             Modifier
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(formScroll)
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 24.dp),
         ) {
             if (adding) {
                 Spacer(Modifier.height(4.dp))
-                EditorTabs(tab = tab, onSelect = { tab = it })
+                EditorTabs(
+                    tab = tab,
+                    enabled = !busy,
+                    onSelect = {
+                        if (tab != it) {
+                            key = ""
+                            reveal = false
+                        }
+                        tab = it
+                    },
+                )
             }
 
             Spacer(Modifier.height(14.dp))
 
             if (catalogMode) {
-                Text(
-                    "从内置目录中选择一家，填入 API 密钥即可使用；同一家可以添加多次。",
-                    style = TcTypography.labelMedium,
-                    color = palette.labelTertiary,
-                )
-                Spacer(Modifier.height(12.dp))
-                catalogEntries.forEach { item ->
+                val picked = pickedCatalog
+                if (choosingCatalog || picked == null) {
+                    catalogEntries.forEach { item ->
+                        CatalogRow(
+                            provider = item,
+                            picked = picked?.id == item.id,
+                            onClick = {
+                                if (picked?.id != item.id) {
+                                    pickedCatalog = item
+                                    key = ""
+                                    reveal = false
+                                    error = null
+                                    id = ProviderNaming.uniqueId(item.id, existingIds)
+                                    name = ProviderNaming.uniqueName(item.displayName, existingNames)
+                                    baseUrl = item.baseUrl
+                                    protocol = item.protocol
+                                    models = item.models
+                                }
+                                choosingCatalog = false
+                                scope.launch { formScroll.scrollTo(0) }
+                            },
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                } else {
                     CatalogRow(
-                        provider = item,
-                        picked = pickedCatalog?.id == item.id,
-                        onClick = {
-                            pickedCatalog = item
-                            // 预设只预填基础信息与能力边界，不决定身份（决策 48）
-                            id = ProviderNaming.uniqueId(item.id, existingIds)
-                            name = ProviderNaming.uniqueName(item.displayName, existingNames)
-                            baseUrl = item.baseUrl
-                            protocol = item.protocol
-                            models = item.models
-                        },
+                        provider = picked,
+                        picked = true,
+                        collapsed = true,
+                        enabled = !busy,
+                        onClick = { choosingCatalog = true },
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(16.dp))
                 }
             }
 
-            // 目录 tab 选中之后也要露出密钥与模型（否则只能选不能填）
-            if (!catalogMode || pickedCatalog != null) {
+            if (!catalogMode || !choosingCatalog) {
                 if (adding) {
                     EditorField(
-                        label = "Provider ID",
+                        label = stringResource(R.string.prefs_detail_provider_id),
                         value = id,
                         enabled = !busy,
                         placeholder = "acme-gateway",
                         onValueChange = { id = it.lowercase().filter { c -> c.isLetterOrDigit() || c == '-' }.take(32) },
                     )
-                    Text(
-                        "以小写字母开头的标识，用于在本机唯一标识该服务商。",
-                        style = TcTypography.labelMedium,
-                        color = palette.labelTertiary,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
                     Spacer(Modifier.height(16.dp))
                 }
 
                 EditorField(
-                    label = "显示名称",
+                    label = stringResource(R.string.prefs_detail_provider_display_name),
                     value = name,
                     enabled = !busy,
-                    placeholder = "例如：我的网关",
+                    placeholder = stringResource(R.string.prefs_detail_provider_gateway),
                     onValueChange = { name = it.take(24) },
                 )
                 Spacer(Modifier.height(16.dp))
 
                 EditorField(
-                    label = "API 地址",
+                    label = stringResource(R.string.prefs_detail_provider_url),
                     value = baseUrl,
                     enabled = !busy,
                     placeholder = "https://gateway.example/v1",
@@ -475,15 +480,15 @@ fun ProviderEditorScreen(
                 Spacer(Modifier.height(16.dp))
 
                 EditorField(
-                    label = "API 密钥",
+                    label = stringResource(R.string.prefs_detail_provider_key),
                     value = key,
                     enabled = !busy,
-                    placeholder = if (hasKey) "留空使用已保存的凭据" else "输入 API 密钥",
+                    placeholder = if (hasKey) stringResource(R.string.prefs_detail_saved) else "",
                     secret = !reveal,
                     onValueChange = { key = it.trim() },
                     trailing = {
                         Text(
-                            text = if (reveal) "隐藏" else "显示",
+                            text = if (reveal) stringResource(R.string.prefs_detail_hide) else stringResource(R.string.prefs_detail_show),
                             style = TcTypography.bodyMedium,
                             color = palette.labelSecondary,
                             modifier = Modifier
@@ -497,19 +502,27 @@ fun ProviderEditorScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = status ?: "未校验",
+                            text = when {
+                                checking -> stringResource(R.string.prefs_detail_provider_checking)
+                                keyCleared -> stringResource(R.string.prefs_detail_provider_key_cleared)
+                                checkStatus == ProviderCheck.OK -> stringResource(R.string.prefs_detail_provider_available)
+                                checkStatus == ProviderCheck.FAILED -> checkMessage?.let(context::providerError)
+                                    ?: stringResource(R.string.prefs_detail_provider_check_failed)
+                                else -> stringResource(R.string.prefs_detail_provider_unchecked)
+                            },
                             style = TcTypography.labelMedium,
                             color = when {
-                                status == null -> palette.labelTertiary
-                                status == "校验中…" -> palette.labelSecondary
-                                status in OK_WORDS -> palette.brand
-                                else -> palette.danger
+                                checking -> palette.labelSecondary
+                                keyCleared -> palette.labelTertiary
+                                checkStatus == ProviderCheck.OK -> palette.brand
+                                checkStatus == ProviderCheck.FAILED -> palette.danger
+                                else -> palette.labelTertiary
                             },
                             modifier = Modifier.weight(1f),
                         )
                         if (hasKey) {
                             Text(
-                                text = "重新校验",
+                                text = stringResource(R.string.prefs_detail_provider_recheck),
                                 style = TcTypography.labelMedium,
                                 color = palette.brand,
                                 modifier = Modifier
@@ -520,7 +533,7 @@ fun ProviderEditorScreen(
                     }
                     if (hasKey) {
                         Text(
-                            text = "清除已保存的密钥",
+                            text = stringResource(R.string.prefs_detail_provider_clear_key),
                             style = TcTypography.labelMedium,
                             color = palette.danger,
                             modifier = Modifier
@@ -548,33 +561,16 @@ fun ProviderEditorScreen(
                             fetching = true
                             error = null
                             runCatching { onFetchModels(candidate, key.trim().takeIf { it.isNotEmpty() }) }
-                                .onSuccess { ids ->
-                                    if (ids.isEmpty()) {
-                                        error = "服务端没有返回模型"
+                                .onSuccess { discovered ->
+                                    if (discovered.isEmpty()) {
+                                        error = context.getString(R.string.prefs_detail_provider_no_models)
                                     } else {
-                                        val fetched = ids.map { modelId ->
-                                            currentModels.firstOrNull { it.id == modelId } ?: ModelInfo(
-                                                id = modelId,
-                                                displayName = modelId,
-                                                contextWindow = 128_000,
-                                                maxOutputTokens = 8_192,
-                                                capabilities = io.tinychat.model.Capabilities(
-                                                    thinking = false,
-                                                    reasoning = false,
-                                                ),
-                                            )
-                                        }
-                                        if (kindOf == ProviderKind.OPENAI_COMPATIBLE) {
-                                            // 自定义服务商：拉到的追加到现有目录，不删用户手填的
-                                            val existingIds = currentModels.map { it.id }.toSet()
-                                            models = models + fetched.filter { it.id !in existingIds }
-                                        } else {
-                                            // 目录服务商：模型以服务端为准，拉取即替换
-                                            models = fetched
-                                        }
+                                        models = candidate.mergeDiscoveredModels(discovered)
                                     }
                                 }
-                                .onFailure { error = it.message ?: "获取可用模型失败" }
+                                .onFailure {
+                                    error = it.message ?: context.getString(R.string.prefs_detail_provider_fetch_failed)
+                                }
                             fetching = false
                             busy = false
                         }
@@ -583,7 +579,7 @@ fun ProviderEditorScreen(
 
                 error?.let {
                     Text(
-                        text = it,
+                        text = context.providerError(it),
                         style = TcTypography.labelMedium,
                         color = palette.danger,
                         modifier = Modifier.padding(top = 10.dp),
@@ -594,7 +590,7 @@ fun ProviderEditorScreen(
 
         // 动作区（02 §10.2）：一屏一个主操作，取消由顶栏返回承担
         TcButton(
-            text = if (busy) "保存中…" else "保存",
+            text = if (busy) stringResource(R.string.prefs_detail_saving) else stringResource(R.string.prefs_detail_save),
             onClick = { save() },
             enabled = canSave,
             fillWidth = true,
@@ -605,38 +601,37 @@ fun ProviderEditorScreen(
     }
 
     if (confirmDiscard) {
-        AlertDialog(
+        TcAlertDialog(
             onDismissRequest = { confirmDiscard = false },
-            title = { Text("放弃修改？") },
-            text = { Text("这一页有还没保存的改动。") },
+            title = { Text(stringResource(R.string.prefs_detail_discard_changes)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDiscard = false
                     onBack()
-                }) { Text("放弃", color = TcTheme.palette.brand) }
+                }) { Text(stringResource(R.string.prefs_detail_discard), color = TcTheme.palette.brand) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDiscard = false }) {
-                    Text("继续编辑", color = TcTheme.palette.labelSecondary)
+                    Text(stringResource(R.string.prefs_detail_keep_editing), color = TcTheme.palette.labelSecondary)
                 }
             },
         )
     }
     if (confirmClear) {
-        AlertDialog(
+        TcAlertDialog(
             onDismissRequest = { confirmClear = false },
-            title = { Text("清除已保存的密钥？") },
-            text = { Text("清除后要重新填写才能继续对话。只删本机保存的密钥，历史记录和服务商账户不受影响。") },
+            title = { Text(stringResource(R.string.prefs_detail_provider_clear_key_confirm)) },
+            text = { Text(stringResource(R.string.prefs_detail_provider_clear_key_warning)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmClear = false
                     scope.launch {
                         onClearKey(provider!!.id)
-                        status = "已清除"
+                        keyCleared = true
                     }
-                }) { Text("清除", color = palette.danger) }
+                }) { Text(stringResource(R.string.prefs_detail_clear), color = palette.danger) }
             },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消", color = TcTheme.palette.labelSecondary) } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.prefs_detail_cancel), color = TcTheme.palette.labelSecondary) } },
         )
     }
 }
@@ -644,7 +639,7 @@ fun ProviderEditorScreen(
 private enum class EditorTab { CATALOG, CUSTOM }
 
 @Composable
-private fun EditorTabs(tab: EditorTab, onSelect: (EditorTab) -> Unit) {
+private fun EditorTabs(tab: EditorTab, enabled: Boolean, onSelect: (EditorTab) -> Unit) {
     val palette = TcTheme.palette
     Row(
         Modifier
@@ -652,7 +647,11 @@ private fun EditorTabs(tab: EditorTab, onSelect: (EditorTab) -> Unit) {
             .background(palette.selector, RoundedCornerShape(10.dp))
             .padding(3.dp),
     ) {
-        listOf(EditorTab.CATALOG to "第三方模型提供商", EditorTab.CUSTOM to "自定义模型 API").forEach { (item, title) ->
+        val tabs = listOf(
+            EditorTab.CATALOG to R.string.prefs_detail_provider_catalog,
+            EditorTab.CUSTOM to R.string.prefs_detail_provider_custom,
+        )
+        tabs.forEach { (item, title) ->
             val picked = item == tab
             Box(
                 Modifier
@@ -662,11 +661,11 @@ private fun EditorTabs(tab: EditorTab, onSelect: (EditorTab) -> Unit) {
                         if (picked) palette.bgLayer2 else androidx.compose.ui.graphics.Color.Transparent,
                         RoundedCornerShape(8.dp),
                     )
-                    .clickable { onSelect(item) },
+                    .clickable(enabled = enabled) { onSelect(item) },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = title,
+                    text = stringResource(title),
                     fontSize = 13.sp,
                     color = if (picked) palette.labelPrimary else palette.labelSecondary,
                 )
@@ -676,33 +675,50 @@ private fun EditorTabs(tab: EditorTab, onSelect: (EditorTab) -> Unit) {
 }
 
 @Composable
-private fun CatalogRow(provider: Provider, picked: Boolean, onClick: () -> Unit) {
+private fun CatalogRow(
+    provider: Provider,
+    picked: Boolean,
+    collapsed: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     val palette = TcTheme.palette
+    val description = if (collapsed) stringResource(R.string.prefs_detail_provider_choose_another) else null
     Row(
         Modifier
             .fillMaxWidth()
             .border(1.dp, if (picked) palette.brand else palette.borderL2, RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
+            .semantics { selected = picked }
+            .clickable(onClickLabel = description, enabled = enabled, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(provider.displayName, style = TcTypography.bodyLarge, color = palette.labelPrimary)
+            Text(provider.localizedName(), style = TcTypography.bodyLarge, color = palette.labelPrimary)
             Text(
-                text = if (provider.kind == ProviderKind.OPENCODE_GO) {
-                    "opencode.ai/go"
-                } else {
-                    "platform.deepseek.com"
-                },
+                text = Uri.parse(provider.baseUrl).host ?: provider.baseUrl,
                 style = TcTypography.labelMedium,
                 color = palette.labelTertiary,
                 maxLines = 2,
             )
         }
-        if (picked) {
-            Text("已选择", fontSize = 12.sp, color = palette.brand)
+        if (collapsed) {
+            Icon(TcIcons.ChevronDown, contentDescription = null, tint = palette.labelSecondary)
         }
     }
+}
+
+@Composable
+private fun Provider.localizedName(): String = when {
+    kind == ProviderKind.DEEPSEEK_OFFICIAL && displayName == KnownProviders.deepSeek.displayName ->
+        stringResource(R.string.prefs_detail_provider_official)
+    displayName == "Kimi (CN)" -> stringResource(R.string.prefs_detail_provider_kimi_cn)
+    displayName == "Kimi (Global)" -> stringResource(R.string.prefs_detail_provider_kimi_global)
+    displayName == "MiniMax (CN)" -> stringResource(R.string.prefs_detail_provider_minimax_cn)
+    displayName == "MiniMax (Global)" -> stringResource(R.string.prefs_detail_provider_minimax_global)
+    displayName == "GLM Coding Plan (CN)" -> stringResource(R.string.prefs_detail_provider_glm_cn)
+    displayName == "Qwen Token Plan (CN)" -> stringResource(R.string.prefs_detail_provider_qwen_cn)
+    else -> displayName
 }
 
 @Composable
@@ -723,10 +739,10 @@ private fun ModelDirectory(
     var editing by remember { mutableStateOf<Pair<Int, ModelInfo>?>(null) }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("模型目录", style = TcTypography.labelMedium, color = palette.labelSecondary, modifier = Modifier.weight(1f))
+        Text(stringResource(R.string.prefs_detail_provider_models), style = TcTypography.labelMedium, color = palette.labelSecondary, modifier = Modifier.weight(1f))
         if (canFetch) {
             Text(
-                text = if (fetching) "获取中…" else "获取可用模型",
+                text = if (fetching) stringResource(R.string.prefs_detail_provider_fetching) else stringResource(R.string.prefs_detail_provider_fetch),
                 style = TcTypography.labelMedium,
                 color = if (busy) palette.labelTertiary else palette.brand,
                 modifier = Modifier
@@ -744,9 +760,9 @@ private fun ModelDirectory(
                 .fillMaxWidth()
                 .padding(start = 2.dp, end = 2.dp, bottom = 4.dp),
         ) {
-            Text("模型", style = TcTypography.labelMedium, color = palette.labelTertiary, modifier = Modifier.weight(1.2f))
+            Text(stringResource(R.string.prefs_detail_provider_model), style = TcTypography.labelMedium, color = palette.labelTertiary, modifier = Modifier.weight(1.2f))
             Spacer(Modifier.width(8.dp))
-            Text("名称", style = TcTypography.labelMedium, color = palette.labelTertiary, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.prefs_detail_name), style = TcTypography.labelMedium, color = palette.labelTertiary, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(28.dp))
         }
     }
@@ -762,7 +778,7 @@ private fun ModelDirectory(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = model.id.ifBlank { "未命名模型" },
+                    text = if (model.id.isBlank()) stringResource(R.string.prefs_detail_provider_model_unnamed) else model.id,
                     style = TcTypography.bodyMedium,
                     color = if (model.id.isBlank()) palette.danger else palette.labelPrimary,
                     maxLines = 1,
@@ -784,7 +800,10 @@ private fun ModelDirectory(
                         fontSize = 13.sp,
                         color = palette.labelTertiary,
                         modifier = Modifier
-                            .clickable(enabled = !busy) { onRemove(index) }
+                            .clickable(
+                                enabled = !busy,
+                                onClickLabel = stringResource(R.string.prefs_detail_delete),
+                            ) { onRemove(index) }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                     )
                 }
@@ -800,22 +819,9 @@ private fun ModelDirectory(
         }
     }
 
-    if (models.isEmpty()) {
-        Text(
-            text = if (editable) {
-                "还没有模型。点击上面「获取可用模型」，或手动添加。"
-            } else {
-                "还没有模型。点击上面「获取可用模型」拉取。"
-            },
-            style = TcTypography.labelMedium,
-            color = palette.labelTertiary,
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
-    }
-
     if (editable) {
         Text(
-            text = "＋ 添加模型",
+            text = "＋ ${stringResource(R.string.prefs_detail_provider_model_add)}",
             style = TcTypography.labelMedium,
             color = palette.labelSecondary,
             modifier = Modifier
@@ -848,17 +854,28 @@ private fun ModelDirectory(
 }
 
 /** 模型行下面那行摘要：能力边界在列表里就能读到，不用点进去（决策 49）。 */
-private fun modelSummary(model: ModelInfo): String = buildList {
-    add(if (model.contextWindow > 0) "${shortTokens(model.contextWindow)} 上下文" else "上下文未知")
-    add(if (model.maxOutputTokens > 0) "${shortTokens(model.maxOutputTokens)} 输出" else "输出未知")
-    if (model.capabilities.thinking) {
-        add(if (model.capabilities.effort) "思考，可调强度" else "思考")
-    }
-    if (model.capabilities.imageInput) add("视觉")
-}.joinToString("，")
+@Composable
+private fun modelSummary(model: ModelInfo): String = listOfNotNull(
+    if (model.contextWindow > 0) {
+        stringResource(R.string.prefs_detail_provider_features_context, shortTokens(model.contextWindow))
+    } else {
+        stringResource(R.string.prefs_detail_provider_features_context_unknown)
+    },
+    if (model.maxOutputTokens > 0) {
+        stringResource(R.string.prefs_detail_provider_features_output, shortTokens(model.maxOutputTokens))
+    } else {
+        stringResource(R.string.prefs_detail_provider_features_output_unknown)
+    },
+    when {
+        model.capabilities.effort -> stringResource(R.string.prefs_detail_provider_features_effort)
+        model.capabilities.thinking -> stringResource(R.string.prefs_detail_provider_features_reasoning)
+        else -> null
+    },
+    if (model.capabilities.imageInput) stringResource(R.string.prefs_detail_provider_features_vision) else null,
+    if (model.capabilities.fileUpload) stringResource(R.string.prefs_detail_provider_features_files) else null,
+).joinToString(" · ")
 
 private fun shortTokens(value: Int): String = when {
-    value <= 0 -> "未知"
     value % 1_000_000 == 0 -> "${value / 1_000_000}M"
     value % 1_000 == 0 -> "${value / 1_000}k"
     else -> value.toString()
@@ -886,13 +903,15 @@ private fun ModelDetailDialog(
     var thinking by remember { mutableStateOf(model.capabilities.thinking) }
     var effort by remember { mutableStateOf(model.capabilities.effort) }
     var vision by remember { mutableStateOf(model.capabilities.imageInput) }
+    var pdf by remember { mutableStateOf(model.capabilities.fileUpload) }
+    val compatibleProtocol = protocol != ProviderProtocol.DEEPSEEK_MESSAGES
 
-    AlertDialog(
+    TcAlertDialog(
         onDismissRequest = onDismiss,
         containerColor = palette.bg,
         title = {
             Text(
-                text = if (isNew) "添加模型" else "编辑模型",
+                text = if (isNew) stringResource(R.string.prefs_detail_provider_model_add) else stringResource(R.string.prefs_detail_provider_model_edit),
                 style = TcTypography.titleMedium,
                 color = palette.labelPrimary,
             )
@@ -904,7 +923,7 @@ private fun ModelDetailDialog(
                     .verticalScroll(rememberScrollState()),
             ) {
                 EditorField(
-                    label = "模型 ID",
+                    label = stringResource(R.string.prefs_detail_provider_model_id),
                     value = id,
                     enabled = true,
                     placeholder = "gpt-4.1",
@@ -912,15 +931,15 @@ private fun ModelDetailDialog(
                 )
                 Spacer(Modifier.height(14.dp))
                 EditorField(
-                    label = "显示名称",
+                    label = stringResource(R.string.prefs_detail_provider_display_name),
                     value = name,
                     enabled = true,
-                    placeholder = "留空则与 ID 相同",
+                    placeholder = id,
                     onValueChange = { name = it.take(40) },
                 )
                 Spacer(Modifier.height(14.dp))
                 EditorField(
-                    label = "上下文窗口",
+                    label = stringResource(R.string.prefs_detail_provider_context),
                     value = contextText,
                     enabled = true,
                     placeholder = "128000",
@@ -928,22 +947,15 @@ private fun ModelDetailDialog(
                 )
                 Spacer(Modifier.height(14.dp))
                 EditorField(
-                    label = "最大输出",
+                    label = stringResource(R.string.prefs_detail_provider_output),
                     value = outputText,
                     enabled = true,
                     placeholder = "8192",
                     onValueChange = { outputText = it.filter(Char::isDigit).take(9) },
                 )
-                Text(
-                    text = "单位是 token，不是千 token：128k 写 128000。留空表示未知。",
-                    style = TcTypography.labelMedium,
-                    color = palette.labelTertiary,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
                 Spacer(Modifier.height(6.dp))
                 DialogSwitch(
-                    title = "支持思考",
-                    subtitle = "模型会返回思考过程",
+                    title = stringResource(R.string.prefs_detail_provider_reasoning),
                     checked = thinking,
                     enabled = true,
                     onCheckedChange = {
@@ -952,21 +964,23 @@ private fun ModelDetailDialog(
                     },
                 )
                 DialogSwitch(
-                    title = "可调思考强度",
-                    subtitle = if (thinking) "开启后底栏出现强度选择" else "先开启思考",
+                    title = stringResource(R.string.prefs_detail_provider_features_effort),
                     checked = effort && thinking,
                     enabled = thinking,
                     onCheckedChange = { effort = it },
                 )
-                // 视觉只对 OpenAI 兼容链路开放（决策 53）；Anthropic 兼容的图片块还没做，
-                // 不在这里放一个点了也不发货的开关
-                if (protocol == ProviderProtocol.OPENAI_CHAT) {
+                if (compatibleProtocol) {
                     DialogSwitch(
-                        title = "视觉",
-                        subtitle = "可以发送图片；历史里的图片每轮都会重发一次",
+                        title = stringResource(R.string.prefs_detail_provider_features_vision),
                         checked = vision,
                         enabled = true,
                         onCheckedChange = { vision = it },
+                    )
+                    DialogSwitch(
+                        title = stringResource(R.string.prefs_detail_provider_native_pdf),
+                        checked = pdf,
+                        enabled = true,
+                        onCheckedChange = { pdf = it },
                     )
                 }
             }
@@ -989,22 +1003,18 @@ private fun ModelDetailDialog(
                             capabilities = model.capabilities.copy(
                                 thinking = thinking,
                                 effort = effort && thinking,
-                                // 只有 OpenAI 兼容链路真的会发图，别的协议保持原值不动
-                                imageInput = if (protocol == ProviderProtocol.OPENAI_CHAT) {
-                                    vision
-                                } else {
-                                    model.capabilities.imageInput
-                                },
+                                imageInput = if (compatibleProtocol) vision else model.capabilities.imageInput,
+                                fileUpload = if (compatibleProtocol) pdf else model.capabilities.fileUpload,
                             ),
                         ),
                     )
                 },
             ) {
-                Text("保存", color = if (id.isNotBlank()) palette.brand else palette.labelTertiary)
+                Text(stringResource(R.string.prefs_detail_save), color = if (id.isNotBlank()) palette.brand else palette.labelTertiary)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = palette.labelSecondary) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.prefs_detail_cancel), color = palette.labelSecondary) }
         },
     )
 }
@@ -1012,7 +1022,6 @@ private fun ModelDetailDialog(
 @Composable
 private fun DialogSwitch(
     title: String,
-    subtitle: String,
     checked: Boolean,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
@@ -1024,14 +1033,12 @@ private fun DialogSwitch(
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = TcTypography.bodyMedium,
-                color = if (enabled) palette.labelPrimary else palette.labelTertiary,
-            )
-            Text(subtitle, style = TcTypography.labelMedium, color = palette.labelTertiary)
-        }
+        Text(
+            text = title,
+            style = TcTypography.bodyMedium,
+            color = if (enabled) palette.labelPrimary else palette.labelTertiary,
+            modifier = Modifier.weight(1f),
+        )
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
@@ -1054,7 +1061,7 @@ private fun ProtocolPicker(
     val palette = TcTheme.palette
     var open by remember { mutableStateOf(false) }
     Column {
-        Text("API 协议", style = TcTypography.labelMedium, color = palette.labelSecondary)
+        Text(stringResource(R.string.prefs_detail_provider_protocol), style = TcTypography.labelMedium, color = palette.labelSecondary)
         Spacer(Modifier.height(6.dp))
         Box {
             Row(
@@ -1109,7 +1116,7 @@ private fun protocolOptions(kind: ProviderKind): List<ProviderProtocol> = when (
 }
 
 @Composable
-private fun EditorField(
+internal fun EditorField(
     label: String,
     value: String,
     enabled: Boolean,
@@ -1140,7 +1147,7 @@ private fun EditorField(
                 visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
-                    if (value.isEmpty()) {
+                    if (value.isEmpty() && placeholder.isNotEmpty()) {
                         Text(placeholder, style = TcTypography.bodyMedium, color = palette.labelTertiary)
                     }
                     inner()
@@ -1152,4 +1159,31 @@ private fun EditorField(
 }
 
 private val ID_REGEX = Regex("^[a-z][a-z0-9-]{1,31}$")
-private val OK_WORDS = setOf("可用", "已保存")
+
+// Existing installations may have these verifier messages saved in their provider records.
+private fun Context.providerError(message: String): String {
+    val resource = when (message) {
+        "尚未配置 API Key", "请先填写 API Key" -> R.string.prefs_detail_provider_key_missing
+        "Key 无效", "API Key 无效，请检查后重试" -> R.string.prefs_detail_provider_key_invalid
+        "账户余额不足，充值后即可继续" -> R.string.prefs_detail_provider_key_balance
+        "操作太频繁，稍后再试" -> R.string.prefs_detail_provider_rate_limited
+        "服务异常，请稍后再试" -> R.string.prefs_detail_provider_server_error
+        "无法连接网络，请检查网络设置后重试" -> R.string.prefs_detail_provider_network_error
+        "未获取到模型列表，可手动添加", "当前接口地址未返回可用模型列表" ->
+            R.string.prefs_detail_provider_models_missing
+        "模型列表格式无法解析" -> R.string.prefs_detail_provider_models_invalid
+        else -> null
+    }
+    if (resource != null) return getString(resource)
+
+    val httpError = ProviderHttpError.matchEntire(message) ?: return message
+    val (operation, code) = httpError.destructured
+    val httpResource = if (operation == "连接失败") {
+        R.string.prefs_detail_provider_http_error
+    } else {
+        R.string.prefs_detail_provider_models_http_error
+    }
+    return getString(httpResource, code)
+}
+
+private val ProviderHttpError = Regex("""(连接失败|获取模型列表失败)（([0-9]{3})）""")

@@ -13,7 +13,7 @@ import java.security.MessageDigest
 /**
  * 协议分发：把「服务商 + 命令」变成「可发送的请求」与「对应的流解码器」。
  *
- * 这里是**唯一**按服务商类型分支的地方——上层（仓库、UI）只拿能力位说话。
+ * 服务商专属的请求格式与地址在这里处理。
  */
 object ChatProtocols {
 
@@ -35,7 +35,7 @@ object ChatProtocols {
         apiKey: String,
         command: ChatCommand,
         extraHeaders: Map<String, String> = emptyMap(),
-    ): PreparedRequest = when (provider.protocol) {
+    ): PreparedRequest = (when (provider.protocol) {
         ProviderProtocol.DEEPSEEK_MESSAGES ->
             DeepSeekMessagesProtocol.build(provider.baseUrl, apiKey, command)
 
@@ -50,9 +50,9 @@ object ChatProtocols {
                 extraHeaders = extraHeaders,
                 includeUsage = provider.meta[ProviderMeta.NO_STREAM_OPTIONS] != "1",
             )
-    }
+    }).copy(providerKind = provider.kind)
 
-    /** OpenCode Go 的对话走 Zen 域；其他 OpenAI 兼容服务商直接用自己的地址。 */
+    /** 已配置 Zen 地址的 OpenCode Go 会话继续走该兼容端点。 */
     private fun inferenceBase(provider: Provider): String =
         if (provider.kind == ProviderKind.OPENCODE_GO) {
             provider.meta[ProviderMeta.ZEN_BASE] ?: provider.baseUrl

@@ -114,4 +114,26 @@ class ChatRepositoryPromptTest {
 
         assertFalse(transport.request!!.bodyJson.contains("\"system\""))
     }
+
+    @Test
+    fun `专家模式只替换本轮提示词，关闭后恢复会话快照`() = runBlocking {
+        val original = "原有的提示词"
+        val repo = repository(snapshot = PromptSnapshot(original, PromptMode.APPEND))
+        val id = repo.createSession()
+
+        repo.send(id, "你好", expertMode = true)
+        val expertBody = transport.request!!.bodyJson
+        assertTrue(expertBody.contains("You are an AI agent powered by DeepSeek Harness."))
+        assertTrue(expertBody.contains("Non-zero exits are reported as `[exit code: N]` markers"))
+        assertFalse(expertBody.contains("{{"))
+        assertFalse(expertBody.contains(original))
+        assertFalse(expertBody.contains(PromptSeeds.OFFICIAL_SYSTEM))
+        assertEquals(original, db.sessionDao().byId(id)!!.systemPromptSnapshot)
+
+        repo.send(id, "再问一个问题")
+        val normalBody = transport.request!!.bodyJson
+        assertTrue(normalBody.contains(original))
+        assertTrue(normalBody.contains(PromptSeeds.OFFICIAL_SYSTEM))
+        assertFalse(normalBody.contains("You are an AI agent powered by DeepSeek Harness."))
+    }
 }

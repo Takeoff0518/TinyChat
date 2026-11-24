@@ -1,6 +1,8 @@
 package io.tinychat
 
 import android.app.Application
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import io.tinychat.crash.CrashGuard
 import io.tinychat.crash.LocalWipe
 
@@ -12,7 +14,10 @@ import io.tinychat.crash.LocalWipe
  *    Room / DataStore 打开之前）；
  * 2. 再装崩溃兜底，保证之后任何线程崩掉都走我们自己的页面。
  */
-class TinyChatApplication : Application() {
+class TinyChatApplication : Application(), ViewModelStoreOwner {
+    override val viewModelStore = ViewModelStore()
+    val container by lazy { AppContainer(this) }
+    internal val generation by lazy { ChatGenerationLifetime(this) }
 
     override fun onCreate() {
         super.onCreate()

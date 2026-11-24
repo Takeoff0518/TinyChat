@@ -1,5 +1,6 @@
 package io.tinychat.feature.settings
 
+import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -22,7 +23,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -39,18 +39,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.tinychat.data.db.PromptPresetEntity
 import io.tinychat.designsystem.TcIcons
 import io.tinychat.designsystem.TcTheme
 import io.tinychat.designsystem.TcTypography
-import io.tinychat.model.prompt.PromptSeeds
 import io.tinychat.model.prompt.PromptTemplate
 import io.tinychat.model.prompt.PromptVariables
+import io.tinychat.ui.TcAlertDialog
 import io.tinychat.ui.TcButton
 import io.tinychat.ui.TcButtonVariant
 import io.tinychat.ui.TcChip
@@ -79,7 +78,7 @@ fun PromptSettingsScreen(
     val palette = TcTheme.palette
 
     Column(Modifier.fillMaxSize().background(palette.bg)) {
-        TcTopBar(title = "系统提示词", leading = { TcIconButton(TcIcons.Back, "返回", onBack) })
+        TcTopBar(title = stringResource(R.string.prefs_detail_prompt_title), leading = { TcIconButton(TcIcons.Back, stringResource(R.string.prefs_detail_back), onBack) })
 
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
             Row(
@@ -90,7 +89,7 @@ fun PromptSettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "同时发送官方提示词",
+                    text = stringResource(R.string.prefs_detail_prompt_official),
                     style = TcTypography.bodyLarge,
                     color = palette.labelPrimary,
                     modifier = Modifier.weight(1f),
@@ -106,18 +105,11 @@ fun PromptSettingsScreen(
                     ),
                 )
             }
-            Text(
-                text = PromptSeeds.OFFICIAL_SYSTEM,
-                style = TcTypography.labelMedium,
-                color = palette.labelTertiary,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
-            )
-
             Spacer(Modifier.height(16.dp))
-            TcSectionLabel("预设")
+            TcSectionLabel(stringResource(R.string.prefs_detail_prompt_presets))
 
             PromptRow(
-                title = "不使用自定义内容",
+                title = stringResource(R.string.prefs_detail_prompt_no_preset),
                 selected = selectedId == null,
                 onClick = { onSelect(null) },
             )
@@ -131,17 +123,8 @@ fun PromptSettingsScreen(
                 )
             }
 
-            if (presets.isEmpty()) {
-                Text(
-                    text = "还没有预设。官方提示词会照常发送。",
-                    style = TcTypography.bodyMedium,
-                    color = palette.labelTertiary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-
             TcListRow(
-                title = "新建预设",
+                title = stringResource(R.string.prefs_detail_prompt_new),
                 leading = TcIcons.PlusCircle,
                 onClick = onNew,
             )
@@ -174,7 +157,7 @@ private fun PromptRow(
         if (selected) {
             Icon(
                 imageVector = TcIcons.Checked,
-                contentDescription = "当前",
+                contentDescription = stringResource(R.string.prefs_detail_selected),
                 tint = palette.brand,
                 modifier = Modifier.size(18.dp),
             )
@@ -182,7 +165,7 @@ private fun PromptRow(
         if (onEdit != null) {
             Spacer(Modifier.size(8.dp))
             Text(
-                text = "编辑",
+                text = stringResource(R.string.prefs_detail_edit),
                 style = TcTypography.bodyMedium,
                 color = palette.brand,
                 modifier = Modifier
@@ -245,8 +228,8 @@ fun PromptEditorScreen(
 
     Column(Modifier.fillMaxSize().background(palette.bg)) {
         TcTopBar(
-            title = if (draft) "新建预设" else "编辑预设",
-            leading = { TcIconButton(TcIcons.Back, "返回", ::leave) },
+            title = if (draft) stringResource(R.string.prefs_detail_prompt_new) else stringResource(R.string.prefs_detail_prompt_edit),
+            leading = { TcIconButton(TcIcons.Back, stringResource(R.string.prefs_detail_back), ::leave) },
         )
 
         Column(
@@ -258,7 +241,7 @@ fun PromptEditorScreen(
             if (draft) {
                 Spacer(Modifier.height(8.dp))
             }
-            EditorLabel("名称")
+            EditorLabel(stringResource(R.string.prefs_detail_name))
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -272,24 +255,14 @@ fun PromptEditorScreen(
                     textStyle = TcTypography.bodyLarge.copy(color = palette.labelPrimary),
                     cursorBrush = SolidColor(palette.brand),
                     modifier = Modifier.fillMaxWidth(),
-                    decorationBox = { inner ->
-                        if (name.isEmpty()) {
-                            Text(
-                                "给这个预设起个名字",
-                                color = palette.labelTertiary,
-                                style = TcTypography.bodyLarge,
-                            )
-                        }
-                        inner()
-                    },
                 )
             }
 
             Spacer(Modifier.height(20.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                EditorLabel("内容", modifier = Modifier.weight(1f))
+                EditorLabel(stringResource(R.string.prefs_detail_prompt_content), modifier = Modifier.weight(1f))
                 Text(
-                    "$chars 字  约 $tokens tok",
+                    stringResource(R.string.prefs_detail_prompt_count, chars, tokens),
                     style = TcTypography.labelMedium,
                     color = palette.labelTertiary,
                 )
@@ -308,22 +281,12 @@ fun PromptEditorScreen(
                     textStyle = TcTypography.bodyLarge.copy(color = palette.labelPrimary),
                     cursorBrush = SolidColor(palette.brand),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp),
-                    decorationBox = { inner ->
-                        if (body.text.isEmpty()) {
-                            Text(
-                                "在这里写提示词",
-                                color = palette.labelTertiary,
-                                style = TcTypography.bodyLarge,
-                            )
-                        }
-                        inner()
-                    },
                 )
             }
 
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "常用预设",
+                text = stringResource(R.string.prefs_detail_prompt_templates),
                 style = TcTypography.labelMedium,
                 color = palette.labelTertiary,
                 modifier = Modifier.padding(bottom = 8.dp),
@@ -332,10 +295,11 @@ fun PromptEditorScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FillChip("清空") {
+                FillChip(stringResource(R.string.prefs_detail_prompt_empty)) {
                     if (body.text.isNotBlank()) pendingFill = FillAction.Clear
                 }
-                PromptSeeds.templates.forEach { template ->
+                Templates.forEach { (nameResource, contentResource) ->
+                    val template = PromptTemplate(stringResource(nameResource), stringResource(contentResource))
                     FillChip(template.name) {
                         if (body.text.isBlank()) {
                             body = body.copy(text = template.content)
@@ -362,7 +326,7 @@ fun PromptEditorScreen(
             if (unknown.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "不认识的变量：${unknown.joinToString(" ") { "{{$it}}" }}",
+                    text = stringResource(R.string.prefs_detail_prompt_unknown_variables, unknown.joinToString(" ") { "{{$it}}" }),
                     style = TcTypography.labelMedium,
                     color = palette.danger,
                 )
@@ -373,10 +337,10 @@ fun PromptEditorScreen(
 
             if (!draft) {
                 TcButton(
-                    text = "复制为新预设",
+                    text = stringResource(R.string.prefs_detail_prompt_duplicate),
                     onClick = {
                         draft = true
-                        name = copyName(name, existingNames)
+                        name = context.copyName(name, existingNames)
                     },
                     variant = TcButtonVariant.Outline,
                     fillWidth = true,
@@ -385,10 +349,10 @@ fun PromptEditorScreen(
             }
 
             TcButton(
-                text = "保存",
+                text = stringResource(R.string.prefs_detail_save),
                 onClick = {
                     onSave(name.trim(), body.text, draft)
-                    Toast.makeText(context, "已保存，仅对新会话生效", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, R.string.prefs_detail_prompt_saved, Toast.LENGTH_SHORT).show()
                 },
                 enabled = canSave,
                 fillWidth = true,
@@ -404,7 +368,7 @@ fun PromptEditorScreen(
                 )
                 Spacer(Modifier.height(24.dp))
                 TcButton(
-                    text = "删除这个预设",
+                    text = stringResource(R.string.prefs_detail_prompt_delete),
                     onClick = { confirmDelete = true },
                     variant = TcButtonVariant.Danger,
                     fillWidth = true,
@@ -414,14 +378,14 @@ fun PromptEditorScreen(
     }
 
     pendingFill?.let { action ->
-        val label = when (action) {
-            FillAction.Clear -> "清空"
-            is FillAction.Template -> "「${action.template.name}」"
+        val title = when (action) {
+            FillAction.Clear -> stringResource(R.string.prefs_detail_prompt_clear_confirm)
+            is FillAction.Template -> stringResource(R.string.prefs_detail_prompt_replace_confirm, action.template.name)
         }
-        AlertDialog(
+        TcAlertDialog(
             onDismissRequest = { pendingFill = null },
-            title = { Text("用${label}替换当前内容？") },
-            text = { Text("当前已输入的内容将被清空，此操作不可撤销") },
+            title = { Text(title) },
+            text = { Text(stringResource(R.string.prefs_detail_prompt_undo_warning)) },
             confirmButton = {
                 TextButton(onClick = {
                     body = when (action) {
@@ -429,44 +393,43 @@ fun PromptEditorScreen(
                         is FillAction.Template -> body.copy(text = action.template.content)
                     }
                     pendingFill = null
-                }) { Text("替换") }
+                }) { Text(if (action == FillAction.Clear) stringResource(R.string.prefs_detail_prompt_empty) else stringResource(R.string.prefs_detail_prompt_replace)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingFill = null }) { Text("取消", color = TcTheme.palette.labelSecondary) }
+                TextButton(onClick = { pendingFill = null }) { Text(stringResource(R.string.prefs_detail_cancel), color = TcTheme.palette.labelSecondary) }
             },
         )
     }
 
     if (confirmDiscard) {
-        AlertDialog(
+        TcAlertDialog(
             onDismissRequest = { confirmDiscard = false },
-            title = { Text("放弃修改？") },
-            text = { Text("这段内容还没有保存。") },
+            title = { Text(stringResource(R.string.prefs_detail_discard_changes)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDiscard = false
                     onBack()
-                }) { Text("放弃") }
+                }) { Text(stringResource(R.string.prefs_detail_discard)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDiscard = false }) { Text("继续编辑") }
+                TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.prefs_detail_keep_editing)) }
             },
         )
     }
 
     if (confirmDelete) {
-        AlertDialog(
+        TcAlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("删除预设") },
-            text = { Text("此操作无法恢复。删除后不会影响已经用它创建的会话。") },
+            title = { Text(stringResource(R.string.prefs_detail_prompt_delete_confirm)) },
+            text = { Text(stringResource(R.string.prefs_detail_prompt_delete_warning)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
                     onDelete()
-                }) { Text("删除", color = TcTheme.palette.danger) }
+                }) { Text(stringResource(R.string.prefs_detail_delete), color = TcTheme.palette.danger) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("取消", color = TcTheme.palette.labelSecondary) }
+                TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.prefs_detail_cancel), color = TcTheme.palette.labelSecondary) }
             },
         )
     }
@@ -487,15 +450,23 @@ private fun EditorLabel(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** 尾巴上的「副本」「副本 2」先剥掉，避免复制出来的副本又叫「… 副本 副本」；名字不用唯一，但重名会让列表分不清。 */
-private val CopySuffix = Regex("""\s*副本(\s+\d+)?$""")
+private val Templates = listOf(
+    R.string.prefs_detail_prompt_roleplay to R.string.prefs_detail_prompt_roleplay_body,
+    R.string.prefs_detail_prompt_translate to R.string.prefs_detail_prompt_translate_body,
+    R.string.prefs_detail_prompt_tutor to R.string.prefs_detail_prompt_tutor_body,
+)
 
-private fun copyName(base: String, existing: List<String>): String {
-    val stem = base.trim().replace(CopySuffix, "").trim().ifEmpty { "预设" }
-    var candidate = "$stem 副本"
+// A copy keeps its name when the app language changes.
+private val CopySuffix = Regex("""(?:\s*副本|\s+(?:copy|copie|копия|copia))(\s+\d+)?$""", RegexOption.IGNORE_CASE)
+
+private fun Context.copyName(base: String, existing: List<String>): String {
+    val stem = base.trim().replace(CopySuffix, "").trim().ifEmpty { getString(R.string.prefs_detail_preset) }
+    val suffix = getString(R.string.prefs_detail_prompt_copy_suffix)
+    val copy = "$stem $suffix"
+    var candidate = copy
     var index = 2
     while (candidate in existing) {
-        candidate = "$stem 副本 $index"
+        candidate = "$copy $index"
         index++
     }
     return candidate
