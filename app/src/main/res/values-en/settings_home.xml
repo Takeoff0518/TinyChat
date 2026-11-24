@@ -7,5 +7,4 @@
     <string name="prefs_home_crash">App crash</string>
     <string name="prefs_home_chat">Chat</string>
     <string name="prefs_home_diag">Diagnostics</string>
-    <string name="app_chat_generation">Chat in progress…</string>
 </resources>

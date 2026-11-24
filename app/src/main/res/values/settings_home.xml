@@ -7,5 +7,4 @@
     <string name="prefs_home_crash">应用崩溃</string>
     <string name="prefs_home_chat">会话页</string>
     <string name="prefs_home_diag">诊断信息</string>
-    <string name="app_chat_generation">正在处理对话…</string>
 </resources>

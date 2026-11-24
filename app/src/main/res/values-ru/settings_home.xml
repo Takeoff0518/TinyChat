@@ -7,5 +7,4 @@
     <string name="prefs_home_crash">Сбой приложения</string>
     <string name="prefs_home_chat">Чат</string>
     <string name="prefs_home_diag">Диагностика</string>
-    <string name="app_chat_generation">Обработка диалога…</string>
 </resources>

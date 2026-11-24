@@ -17,7 +17,6 @@ import io.tinychat.crash.LocalWipe
 class TinyChatApplication : Application(), ViewModelStoreOwner {
     override val viewModelStore = ViewModelStore()
     val container by lazy { AppContainer(this) }
-    internal val generation by lazy { ChatGenerationLifetime(this) }
 
     override fun onCreate() {
         super.onCreate()

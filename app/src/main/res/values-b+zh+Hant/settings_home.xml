@@ -7,5 +7,4 @@
     <string name="prefs_home_crash">應用程式當機</string>
     <string name="prefs_home_chat">對話頁</string>
     <string name="prefs_home_diag">診斷資訊</string>
-    <string name="app_chat_generation">正在處理對話…</string>
 </resources>

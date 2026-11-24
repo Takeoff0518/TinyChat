@@ -7,5 +7,4 @@
     <string name="prefs_home_crash">アプリのクラッシュ</string>
     <string name="prefs_home_chat">チャット</string>
     <string name="prefs_home_diag">診断情報</string>
-    <string name="app_chat_generation">会話を処理中…</string>
 </resources>

@@ -7,5 +7,4 @@
     <string name="prefs_home_crash">Cierre inesperado</string>
     <string name="prefs_home_chat">Chat</string>
     <string name="prefs_home_diag">Diagnóstico</string>
-    <string name="app_chat_generation">Procesando la conversación…</string>
 </resources>

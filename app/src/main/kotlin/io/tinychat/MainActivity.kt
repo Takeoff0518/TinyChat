@@ -64,7 +64,6 @@ class MainActivity : ComponentActivity() {
                 }) {
                     val lightBackground = TcTheme.palette.bg.luminance() > 0.5f
                     SideEffect {
-                        (application as TinyChatApplication).generation.languageTag = language
                         WindowCompat.getInsetsController(window, window.decorView).apply {
                             isAppearanceLightStatusBars = lightBackground
                             isAppearanceLightNavigationBars = lightBackground

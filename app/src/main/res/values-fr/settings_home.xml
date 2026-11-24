@@ -7,5 +7,4 @@
     <string name="prefs_home_crash">Plantage de l’application</string>
     <string name="prefs_home_chat">Discussion</string>
     <string name="prefs_home_diag">Diagnostic</string>
-    <string name="app_chat_generation">Conversation en cours…</string>
 </resources>

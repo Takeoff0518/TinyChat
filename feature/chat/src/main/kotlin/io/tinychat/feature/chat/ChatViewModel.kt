@@ -386,7 +386,6 @@ class ChatViewModel(
     private val providerKeyFor: suspend (String) -> String? = { null },
     private val webSearchProvider: StateFlow<WebSearchProvider> = MutableStateFlow(WebSearchProvider.DEEPSEEK),
     private val webSearchCredentials: StateFlow<WebSearchCredentials> = MutableStateFlow(WebSearchCredentials()),
-    private val keepGenerationAlive: (Job) -> Unit = {},
 ) : ViewModel() {
 
     var state by mutableStateOf(ChatUiState())
@@ -404,7 +403,6 @@ class ChatViewModel(
     private fun launchChatOperation(block: suspend CoroutineScope.() -> Unit) {
         val operation = viewModelScope.launch(start = CoroutineStart.LAZY, block = block)
         job = operation
-        keepGenerationAlive(operation)
         operation.invokeOnCompletion {
             viewModelScope.launch {
                 if (job !== operation) return@launch
@@ -1763,7 +1761,6 @@ private fun StringBuilder.trimmedEnd(): Int {
             providerKeyFor: suspend (String) -> String? = { null },
             webSearchProvider: StateFlow<WebSearchProvider> = MutableStateFlow(WebSearchProvider.DEEPSEEK),
             webSearchCredentials: StateFlow<WebSearchCredentials> = MutableStateFlow(WebSearchCredentials()),
-            keepGenerationAlive: (Job) -> Unit = {},
         ) = viewModelFactory {
             initializer {
                 ChatViewModel(
@@ -1780,7 +1777,6 @@ private fun StringBuilder.trimmedEnd(): Int {
                     providerKeyFor = providerKeyFor,
                     webSearchProvider = webSearchProvider,
                     webSearchCredentials = webSearchCredentials,
-                    keepGenerationAlive = keepGenerationAlive,
                 )
             }
         }

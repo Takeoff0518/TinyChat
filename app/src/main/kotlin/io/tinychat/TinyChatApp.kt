@@ -144,7 +144,6 @@ fun TinyChatApp() {
             providerKeyFor = { id -> container.apiKeyFor(id) },
             webSearchProvider = container.webSearchProvider,
             webSearchCredentials = container.webSearchCredentials,
-            keepGenerationAlive = application.generation::keepAlive,
         ),
     )
 
