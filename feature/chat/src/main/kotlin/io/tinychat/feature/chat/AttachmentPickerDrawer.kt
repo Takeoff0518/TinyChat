@@ -143,13 +143,23 @@ private fun RecentPhotos(drafts: List<DraftAttachment>, onTogglePhoto: (Uri) -> 
         onDispose { lifecycle?.removeObserver(observer) }
     }
 
-    val permission = remember(context, refresh) { recentPhotoPermission(context) }
-    val photos by produceState<List<Uri>?>(null, context, permission, refresh) {
-        value = if (permission) withContext(Dispatchers.IO) { queryRecentPhotos(context.contentResolver) } else emptyList()
+    val access = remember(context, refresh) { recentPhotoAccess(context) }
+    val recent by produceState<RecentPhotoState>(RecentPhotoState.Loading, context, access, refresh) {
+        value = if (access == PhotoAccess.DENIED) {
+            RecentPhotoState.Loaded(emptyList())
+        } else {
+            withContext(Dispatchers.IO) {
+                // 失败与「确实没有照片」必须分开：以前一律当空，用户看到「没有最近照片」
+                // 却不知道是读不到，也没有重试入口。
+                queryRecentPhotos(context.contentResolver)
+                    ?.let { RecentPhotoState.Loaded(it) }
+                    ?: RecentPhotoState.Failed
+            }
+        }
     }
     var preview by remember { mutableStateOf<Uri?>(null) }
-    val items = photos
-    if (permission && !items.isNullOrEmpty()) {
+    val items = (recent as? RecentPhotoState.Loaded)?.photos.orEmpty()
+    if (items.isNotEmpty()) {
         val selected = drafts.filter { it.isImage }.map { it.uri }.toSet()
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -183,11 +193,30 @@ private fun RecentPhotos(drafts: List<DraftAttachment>, onTogglePhoto: (Uri) -> 
                     }
                 }
             }
+            if (access == PhotoAccess.PARTIAL) {
+                // 用户选了「仅选中的照片」：能看到的只有那几张，给一个再次选择的入口，
+                // 否则界面上只会莫名其妙地少一大截。
+                item(key = "manage-photo-access") {
+                    val shape = RoundedCornerShape(14.dp)
+                    Box(
+                        modifier = Modifier.size(78.dp).clip(shape).background(palette.selector)
+                            .border(1.dp, palette.borderL2, shape)
+                            .clickable(role = Role.Button) { requestPermission.launch(recentPhotoPermissions()) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            stringResource(R.string.chat_manage_photo_access),
+                            style = TcTypography.bodySmall,
+                            color = palette.brand,
+                        )
+                    }
+                }
+            }
         }
     } else {
         Box(Modifier.fillMaxWidth().height(78.dp), contentAlignment = Alignment.Center) {
             when {
-                !permission -> Text(
+                access == PhotoAccess.DENIED -> Text(
                     stringResource(R.string.chat_allow_access_to_recent_photos),
                     style = TcTypography.bodyMedium,
                     color = palette.brand,
@@ -195,7 +224,15 @@ private fun RecentPhotos(drafts: List<DraftAttachment>, onTogglePhoto: (Uri) -> 
                         requestPermission.launch(recentPhotoPermissions())
                     }.padding(10.dp),
                 )
-                items == null -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                recent == RecentPhotoState.Failed -> Text(
+                    stringResource(R.string.chat_photo_read_failed),
+                    style = TcTypography.bodyMedium,
+                    color = palette.brand,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) {
+                        refresh++
+                    }.padding(10.dp),
+                )
+                recent == RecentPhotoState.Loading -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 else -> Text(stringResource(R.string.chat_no_recent_photos), style = TcTypography.bodySmall, color = palette.labelTertiary)
             }
         }
@@ -214,17 +251,41 @@ private fun RecentPhotos(drafts: List<DraftAttachment>, onTogglePhoto: (Uri) -> 
     }
 }
 
+/** 相册访问的三种状态；`PARTIAL` 是 Android 14 的「仅选中的照片」 */
+private enum class PhotoAccess { FULL, PARTIAL, DENIED }
+
+private sealed interface RecentPhotoState {
+    data object Loading : RecentPhotoState
+    data object Failed : RecentPhotoState
+    data class Loaded(val photos: List<Uri>) : RecentPhotoState
+}
+
 private fun recentPhotoPermissions() = when {
     Build.VERSION.SDK_INT >= 34 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
     Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
     else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 }
 
-private fun recentPhotoPermission(context: Context) = recentPhotoPermissions().any {
-    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+/**
+ * 区分「全库」「只选了几张」「没授权」。
+ *
+ * 以前用的是 `any { granted }`：Android 14 上用户选了「仅选中的照片」也算有权限，
+ * 于是网格只会显示那几张，界面却没有任何说明，看起来像相册被清空了。
+ */
+private fun recentPhotoAccess(context: Context): PhotoAccess {
+    fun granted(permission: String) =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+    return when {
+        Build.VERSION.SDK_INT < 33 -> if (granted(Manifest.permission.READ_EXTERNAL_STORAGE)) PhotoAccess.FULL else PhotoAccess.DENIED
+        granted(Manifest.permission.READ_MEDIA_IMAGES) -> PhotoAccess.FULL
+        Build.VERSION.SDK_INT >= 34 && granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) -> PhotoAccess.PARTIAL
+        else -> PhotoAccess.DENIED
+    }
 }
 
-private fun queryRecentPhotos(resolver: ContentResolver): List<Uri> = runCatching {
+/** 读不到时返回 `null`，与「确实是空相册」区分开 */
+private fun queryRecentPhotos(resolver: ContentResolver): List<Uri>? = runCatching {
     val photos = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
     val columns = arrayOf(
         MediaStore.Images.Media._ID,
@@ -240,7 +301,7 @@ private fun queryRecentPhotos(resolver: ContentResolver): List<Uri> = runCatchin
         }
         newestPhotoIds(metadata).map { ContentUris.withAppendedId(photos, it) }
     }.orEmpty()
-}.getOrDefault(emptyList())
+}.getOrNull()
 
 @Composable
 private fun rememberPhotoBitmap(uri: Uri, targetSize: Int, thumbnail: Boolean): androidx.compose.runtime.State<ImageBitmap?> {

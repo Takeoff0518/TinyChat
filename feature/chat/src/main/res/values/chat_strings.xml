@@ -81,6 +81,8 @@
     <string name="chat_no_api_key">未配置密钥</string>
     <string name="chat_no_matches">未查找到相关内容</string>
     <string name="chat_no_recent_photos">暂无最近照片</string>
+    <string name="chat_manage_photo_access">管理</string>
+    <string name="chat_photo_read_failed">读取相册失败，点此重试</string>
     <string name="chat_no_relevant_results">未搜索到合适内容</string>
     <string name="chat_no_speech_detected">未识别到语音内容</string>
     <string name="chat_not_set_up">未配置</string>

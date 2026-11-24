@@ -81,6 +81,8 @@
     <string name="chat_no_api_key">Clé API manquante</string>
     <string name="chat_no_matches">Aucune correspondance</string>
     <string name="chat_no_recent_photos">Aucune photo récente</string>
+    <string name="chat_manage_photo_access">Gérer</string>
+    <string name="chat_photo_read_failed">Impossible de lire la galerie. Touchez pour réessayer</string>
     <string name="chat_no_relevant_results">Aucun résultat pertinent</string>
     <string name="chat_no_speech_detected">Aucune parole détectée.</string>
     <string name="chat_not_set_up">Non configuré</string>

@@ -81,6 +81,8 @@
     <string name="chat_no_api_key">Falta la clave API</string>
     <string name="chat_no_matches">No se encontraron coincidencias</string>
     <string name="chat_no_recent_photos">No hay fotos recientes</string>
+    <string name="chat_manage_photo_access">Gestionar</string>
+    <string name="chat_photo_read_failed">No se pudo leer la galería. Toca para reintentar</string>
     <string name="chat_no_relevant_results">No se encontraron resultados relevantes</string>
     <string name="chat_no_speech_detected">No se detectó voz.</string>
     <string name="chat_not_set_up">Sin configurar</string>

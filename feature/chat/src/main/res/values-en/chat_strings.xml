@@ -81,6 +81,8 @@
     <string name="chat_no_api_key">No API key</string>
     <string name="chat_no_matches">No matches</string>
     <string name="chat_no_recent_photos">No recent photos</string>
+    <string name="chat_manage_photo_access">Manage</string>
+    <string name="chat_photo_read_failed">Couldn\'t read the gallery. Tap to retry</string>
     <string name="chat_no_relevant_results">No relevant results</string>
     <string name="chat_no_speech_detected">No speech detected.</string>
     <string name="chat_not_set_up">Not set up</string>

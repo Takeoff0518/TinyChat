@@ -81,6 +81,8 @@
     <string name="chat_no_api_key">尚未設定金鑰</string>
     <string name="chat_no_matches">找不到相關內容</string>
     <string name="chat_no_recent_photos">沒有最近的照片</string>
+    <string name="chat_manage_photo_access">管理</string>
+    <string name="chat_photo_read_failed">讀取相簿失敗，點此重試</string>
     <string name="chat_no_relevant_results">找不到合適的搜尋結果</string>
     <string name="chat_no_speech_detected">未辨識到語音內容</string>
     <string name="chat_not_set_up">尚未設定</string>
