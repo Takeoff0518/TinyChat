@@ -53,7 +53,6 @@
     <string name="chat_estimated_cost">Примерная стоимость</string>
     <string name="chat_exceeds">Размер файла «%1$s» превышает %2$s.</string>
     <string name="chat_expand_reasoning">Развернуть рассуждения</string>
-    <string name="chat_expert_mode">Режим эксперта</string>
     <string name="chat_file_expired">Вложение больше недоступно. Отправьте его снова.</string>
     <string name="chat_files">Файлы</string>
     <string name="chat_five_hours">5 часов</string>

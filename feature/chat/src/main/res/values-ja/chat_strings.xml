@@ -53,7 +53,6 @@
     <string name="chat_estimated_cost">推定料金</string>
     <string name="chat_exceeds">「%1$s」は %2$s の上限を超えています。</string>
     <string name="chat_expand_reasoning">思考過程を表示</string>
-    <string name="chat_expert_mode">エキスパートモード</string>
     <string name="chat_file_expired">添付ファイルの有効期限が切れました。もう一度アップロードしてください。</string>
     <string name="chat_files">ファイル</string>
     <string name="chat_five_hours">過去 5 時間</string>

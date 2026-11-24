@@ -49,8 +49,6 @@ class UserSettings internal constructor(private val store: DataStore<Preferences
     /** 用户元信息（`latest_reminder`）开关（M7-5）；默认开，与官方一致 */
     val reminderEnabled: Flow<Boolean> = store.data.map { it[REMINDER] ?: true }
 
-    val expertMode: Flow<Boolean> = store.data.map { it[EXPERT_MODE] ?: false }
-
     /**
      * 当前选中的系统提示词预设（决策 45）。**null = 不使用自定义内容**。
      * 旧版本这个键存的是内置 id（`default` / `none` / …），迁移时会被改写或清掉。
@@ -165,10 +163,6 @@ class UserSettings internal constructor(private val store: DataStore<Preferences
         store.edit { it[REMINDER] = enabled }
     }
 
-    suspend fun setExpertMode(enabled: Boolean) {
-        store.edit { it[EXPERT_MODE] = enabled }
-    }
-
     suspend fun setPromptSelectedId(id: String?) {
         store.edit { prefs ->
             if (id == null) prefs.remove(PROMPT_PRESET) else prefs[PROMPT_PRESET] = id
@@ -212,7 +206,6 @@ class UserSettings internal constructor(private val store: DataStore<Preferences
         private val TTS_VOICE = stringPreferencesKey("tts_voice")
         private val SHOW_USAGE = booleanPreferencesKey("show_usage")
         private val REMINDER = booleanPreferencesKey("reminder_enabled")
-        private val EXPERT_MODE = booleanPreferencesKey("expert_mode")
         private val PROMPT_PRESET = stringPreferencesKey("prompt_preset_id")
         private val PROMPT_INCLUDE_OFFICIAL = booleanPreferencesKey("prompt_include_official")
         private val PROMPT_MIGRATED = booleanPreferencesKey("prompt_migrated_v2")

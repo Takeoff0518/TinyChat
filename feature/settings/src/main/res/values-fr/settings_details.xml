@@ -27,7 +27,6 @@
     <string name="prefs_detail_katex_note">Rendu des formules mathématiques</string>
     <string name="prefs_detail_mermaid_note">Rendu des diagrammes</string>
     <string name="prefs_detail_chat_demo_note">Icônes et référence d’interface. Copyright (c) DeepSeek</string>
-    <string name="prefs_detail_harness_note">Consigne du mode expert. Copyright (c) 2026 DeepSeek</string>
     <string name="prefs_detail_browser_missing">Aucun navigateur disponible</string>
     <string name="prefs_detail_diagnostics">Diagnostics</string>
     <string name="prefs_detail_diagnostics_copy">Copier</string>

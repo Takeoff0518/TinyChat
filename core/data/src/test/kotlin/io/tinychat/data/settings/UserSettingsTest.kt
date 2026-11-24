@@ -77,14 +77,12 @@ class UserSettingsTest {
     fun `从旧会话恢复开关但保留旧版已选模型和服务商`() = runTest {
         settings.setActiveProviderId("gateway")
         settings.setLastModel("gateway", "model-new")
-        settings.setExpertMode(true)
 
         val lastSession = ChatDefaults("deepseek", "old-model", ThinkingEffort.MAX, false, true)
         val selected = settings.loadChatDefaults { lastSession }
 
         assertEquals(ChatDefaults("gateway", "model-new", ThinkingEffort.MAX, false, true), selected)
         assertEquals(selected, settings.loadChatDefaults { error("已迁移后不应读取历史会话") })
-        assertTrue(settings.expertMode.first())
     }
 
     @Test

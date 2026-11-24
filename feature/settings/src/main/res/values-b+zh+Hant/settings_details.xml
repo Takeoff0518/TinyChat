@@ -27,7 +27,6 @@
     <string name="prefs_detail_katex_note">數學公式渲染</string>
     <string name="prefs_detail_mermaid_note">流程圖渲染</string>
     <string name="prefs_detail_chat_demo_note">圖示與介面參考，Copyright (c) DeepSeek</string>
-    <string name="prefs_detail_harness_note">專家模式提示詞，Copyright (c) 2026 DeepSeek</string>
     <string name="prefs_detail_browser_missing">沒有可用的瀏覽器</string>
     <string name="prefs_detail_diagnostics">診斷資訊</string>
     <string name="prefs_detail_diagnostics_copy">複製</string>

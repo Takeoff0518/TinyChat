@@ -53,7 +53,6 @@
     <string name="chat_estimated_cost">Coste estimado</string>
     <string name="chat_exceeds">«%1$s» supera los %2$s.</string>
     <string name="chat_expand_reasoning">Expandir el razonamiento</string>
-    <string name="chat_expert_mode">Modo experto</string>
     <string name="chat_file_expired">El archivo adjunto caducó. Vuelve a subirlo.</string>
     <string name="chat_files">Archivos</string>
     <string name="chat_five_hours">5 horas</string>

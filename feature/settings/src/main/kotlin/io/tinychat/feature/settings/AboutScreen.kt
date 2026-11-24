@@ -168,7 +168,6 @@ private val ApacheComponents = listOf(
 private val MitComponents = listOf(
     "Mermaid" to R.string.prefs_detail_mermaid_note,
     "deepseek-ai/chat-demo" to R.string.prefs_detail_chat_demo_note,
-    "deepseek-ai/deepseek-harness" to R.string.prefs_detail_harness_note,
 )
 
 private val TestComponents = listOf(

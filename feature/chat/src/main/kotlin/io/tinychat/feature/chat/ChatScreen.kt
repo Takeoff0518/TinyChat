@@ -203,7 +203,6 @@ fun ChatScreen(
     onSend: () -> Unit,
     onStop: () -> Unit,
     onSetThinking: (Boolean, ThinkingEffort) -> Unit,
-    onSetExpertMode: (Boolean) -> Unit,
     onToggleSearch: () -> Unit,
     onSelectModel: (String, String, ThinkingEffort) -> Unit,
     onOpenDrawer: () -> Unit,
@@ -431,7 +430,6 @@ fun ChatScreen(
             onSend = onSend,
             onStop = onStop,
             onSetThinking = onSetThinking,
-            onSetExpertMode = onSetExpertMode,
             onToggleSearch = onToggleSearch,
             onSelectModel = onSelectModel,
             onCancelEdit = onCancelEdit,
@@ -1814,7 +1812,6 @@ private fun InputCard(
     onSend: () -> Unit,
     onStop: () -> Unit,
     onSetThinking: (Boolean, ThinkingEffort) -> Unit,
-    onSetExpertMode: (Boolean) -> Unit,
     onToggleSearch: () -> Unit,
     onSelectModel: (String, String, ThinkingEffort) -> Unit,
     onCancelEdit: () -> Unit,
@@ -2022,11 +2019,9 @@ private fun InputCard(
                     modelId = state.modelId,
                     effort = state.effort,
                     thinkingEnabled = state.thinkingEnabled,
-                    expertMode = state.expertMode,
                     enabled = !state.isBusy,
                     onSetThinking = onSetThinking,
-                    onSetExpertMode = onSetExpertMode,
-                    onSelect = onSelectModel,
+                        onSelect = onSelectModel,
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 Spacer(Modifier.width(8.dp))
@@ -2128,10 +2123,8 @@ private fun ModelEffortPill(
     modelId: String,
     effort: ThinkingEffort,
     thinkingEnabled: Boolean,
-    expertMode: Boolean,
     enabled: Boolean,
     onSetThinking: (Boolean, ThinkingEffort) -> Unit,
-    onSetExpertMode: (Boolean) -> Unit,
     onSelect: (String, String, ThinkingEffort) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2259,29 +2252,6 @@ private fun ModelEffortPill(
                             )
                         }
                     }
-                }
-                Spacer(Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .toggleable(value = expertMode, role = Role.Switch, onValueChange = onSetExpertMode),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        stringResource(R.string.chat_expert_mode),
-                        style = TcTypography.bodyMedium,
-                        color = palette.labelPrimary,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Switch(
-                        checked = expertMode,
-                        onCheckedChange = null,
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = palette.brand,
-                            checkedThumbColor = palette.brandOn,
-                        ),
-                    )
                 }
                 Spacer(Modifier.height(16.dp))
             }

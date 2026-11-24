@@ -53,7 +53,6 @@
     <string name="chat_estimated_cost">預估費用</string>
     <string name="chat_exceeds">附件「%1$s」超過 %2$s</string>
     <string name="chat_expand_reasoning">展開思考過程</string>
-    <string name="chat_expert_mode">專家模式</string>
     <string name="chat_file_expired">附件已失效，請重新上傳</string>
     <string name="chat_files">檔案</string>
     <string name="chat_five_hours">5 小時</string>

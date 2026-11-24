@@ -28,11 +28,6 @@ deepseek-ai/chat-demo
 
 二、随安装包分发的第三方资源
 
-deepseek-ai/deepseek-harness 0.1.2-rc.1
-    https://github.com/deepseek-ai/deepseek-harness
-    许可证：MIT，Copyright (c) 2026 DeepSeek
-    用途：专家模式的系统提示词，移植自 Web 标准模式快照。许可证原文随 APK 分发。
-
 KaTeX（含随包的 woff2 字体）
     https://github.com/KaTeX/KaTeX
     许可证：MIT

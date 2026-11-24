@@ -43,7 +43,6 @@ import io.tinychat.model.WebSearchProvider
 import io.tinychat.model.billing.CostCalculator
 import io.tinychat.model.billing.PeakClock
 import io.tinychat.model.billing.UsageSummary
-import io.tinychat.data.prompt.HarnessStandardPrompt
 import io.tinychat.data.prompt.PromptSnapshot
 import io.tinychat.model.prompt.PromptMeta
 import io.tinychat.model.prompt.PromptVariables
@@ -460,12 +459,11 @@ class ChatRepository(
         sessionId: String,
         text: String,
         attachments: List<PickedFile> = emptyList(),
-        expertMode: Boolean = false,
     ): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val parentId = session.currentMessageId
             ?: db.messageDao().withFragments(sessionId).lastOrNull()?.message?.id
-        return sendInternal(session, parentId, text, attachments, expertMode)
+        return sendInternal(session, parentId, text, attachments)
     }
 
     /**
@@ -476,11 +474,10 @@ class ChatRepository(
         sessionId: String,
         messageId: Long,
         text: String,
-        expertMode: Boolean = false,
     ): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val original = db.messageDao().byId(messageId) ?: error("消息不存在：$messageId")
-        return sendInternal(session, original.parentId, text, expertMode = expertMode)
+        return sendInternal(session, original.parentId, text)
     }
 
     /**
@@ -491,7 +488,6 @@ class ChatRepository(
     suspend fun regenerate(
         sessionId: String,
         assistantMessageId: Long,
-        expertMode: Boolean = false,
     ): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val original = db.messageDao().byId(assistantMessageId) ?: error("消息不存在：$assistantMessageId")
@@ -513,7 +509,6 @@ class ChatRepository(
             userText = userText,
             // 沿用当时那条提问的元信息快照，避免上下文里凭空多出一条新的 reminder
             reminder = question.reminderSnapshot ?: currentReminder(),
-            expertMode = expertMode,
         )
     }
 
@@ -547,7 +542,6 @@ class ChatRepository(
     suspend fun continueGeneration(
         sessionId: String,
         assistantMessageId: Long,
-        expertMode: Boolean = false,
     ): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val target = db.messageDao().byId(assistantMessageId) ?: error("消息不存在：$assistantMessageId")
@@ -580,7 +574,7 @@ class ChatRepository(
         val currentAttachments = attachmentsOf(question.id, attachments)
         val history = chainTurns(sessionId, question.parentId, attachments)
         val reminder = question.reminderSnapshot ?: currentReminder()
-        val prompt = promptFor(session, modelInfo, expertMode)
+        val prompt = promptFor(session, modelInfo)
 
         val command = ChatCommand(
             capabilities = modelInfo.capabilities,
@@ -636,7 +630,6 @@ class ChatRepository(
         parentId: Long?,
         text: String,
         attachments: List<PickedFile> = emptyList(),
-        expertMode: Boolean,
     ): RunOutcome {
         val sessionId = session.id
         val now = clock()
@@ -676,7 +669,6 @@ class ChatRepository(
             userText = text,
             reminder = reminder,
             assistantInsertedAt = now + 1,
-            expertMode = expertMode,
         )
     }
 
@@ -747,7 +739,7 @@ class ChatRepository(
     /**
      * M4-3 失败重试：附件重传 + 重新请求，**复用同一条提问**，不新建用户消息。
      */
-    suspend fun retryTurn(sessionId: String, userMessageId: Long, expertMode: Boolean = false): RunOutcome {
+    suspend fun retryTurn(sessionId: String, userMessageId: Long): RunOutcome {
         val session = db.sessionDao().byId(sessionId) ?: error("会话不存在：$sessionId")
         val question = db.messageDao().byId(userMessageId) ?: error("消息不存在：$userMessageId")
 
@@ -762,7 +754,6 @@ class ChatRepository(
             userText = userText,
             reminder = question.reminderSnapshot
                 ?: currentReminder(),
-            expertMode = expertMode,
         )
     }
 
@@ -863,7 +854,6 @@ class ChatRepository(
         userText: String,
         reminder: String?,
         assistantInsertedAt: Long = clock(),
-        expertMode: Boolean,
     ): RunOutcome {
         val sessionId = session.id
         val provider = requireProvider(session)
@@ -919,7 +909,7 @@ class ChatRepository(
 
             // 这家服务商之前拒绝过思考参数：记住后不再发（模型声明还留着，用户改协议再说）
             val effortDisabled = provider.meta[ProviderMeta.NO_EFFORT] == "1"
-            val prompt = promptFor(session, modelInfo, expertMode)
+            val prompt = promptFor(session, modelInfo)
             val command = ChatCommand(
                 capabilities = if (effortDisabled) modelInfo.capabilities.copy(effort = false) else modelInfo.capabilities,
                 model = session.model,
@@ -1090,8 +1080,7 @@ class ChatRepository(
      * 变量在**发送时**求值：日期、星期、时间必须实时，所以库里存的是原文；
      * 不在白名单里的变量原样保留（设置页负责报错，这里不做静默吞掉）。
      */
-    private fun promptFor(session: SessionEntity, modelInfo: ModelInfo, expertMode: Boolean): PromptSnapshot {
-        if (expertMode) return PromptSnapshot(HarnessStandardPrompt.render(modelInfo.id), PromptMode.REPLACE)
+    private fun promptFor(session: SessionEntity, modelInfo: ModelInfo): PromptSnapshot {
 
         val raw = session.systemPromptSnapshot ?: return PromptSnapshot(null, session.systemPromptMode)
         val meta = promptMeta()

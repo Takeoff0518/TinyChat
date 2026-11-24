@@ -360,7 +360,6 @@ fun TinyChatApp() {
                         onSend = chatViewModel::send,
                         onStop = chatViewModel::stop,
                         onSetThinking = chatViewModel::setThinking,
-                        onSetExpertMode = chatViewModel::setExpertMode,
                         onToggleSearch = chatViewModel::toggleSearch,
                         onSelectModel = chatViewModel::selectModel,
                         onOpenDrawer = {

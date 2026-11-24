@@ -27,7 +27,6 @@
     <string name="prefs_detail_katex_note">Renderizado de fórmulas</string>
     <string name="prefs_detail_mermaid_note">Renderizado de diagramas</string>
     <string name="prefs_detail_chat_demo_note">Iconos y referencia de interfaz. Copyright (c) DeepSeek</string>
-    <string name="prefs_detail_harness_note">Instrucción del modo experto. Copyright (c) 2026 DeepSeek</string>
     <string name="prefs_detail_browser_missing">No hay un navegador disponible</string>
     <string name="prefs_detail_diagnostics">Diagnóstico</string>
     <string name="prefs_detail_diagnostics_copy">Copiar</string>

@@ -256,7 +256,6 @@ data class ChatUiState(
      */
     val effort: ThinkingEffort = ThinkingEffort.LOW,
     val thinkingEnabled: Boolean = true,
-    val expertMode: Boolean = false,
     val searchEnabled: Boolean = false,
     val webSearchProvider: WebSearchProvider = WebSearchProvider.DEEPSEEK,
     val webSearchCredentials: WebSearchCredentials = WebSearchCredentials(),
@@ -462,9 +461,7 @@ class ChatViewModel(
                     )
                 }
             }
-            val expertMode = settings.expertMode.first()
             if (chatDefaults == null) {
-                state = state.copy(expertMode = expertMode)
                 chatDefaults = saved
                 applyChatDefaults()
             }
@@ -523,11 +520,6 @@ class ChatViewModel(
         viewModelScope.launch {
             settings.reminderEnabled.distinctUntilChanged().collect { enabled ->
                 state = state.copy(reminderEnabled = enabled)
-            }
-        }
-        viewModelScope.launch {
-            settings.expertMode.distinctUntilChanged().collect { enabled ->
-                state = state.copy(expertMode = enabled)
             }
         }
         viewModelScope.launch {
@@ -763,12 +755,11 @@ class ChatViewModel(
         val id = sessionId ?: return
         if (state.isBusy) return
         val defaults = rememberChatDefaults()
-        val expertMode = state.expertMode
         state = state.copy(isStreaming = true, error = null, errorKind = null)
         launchChatOperation {
             try {
                 persistChatSettings(id, defaults)
-                state = state.withOutcomeError(repository.retryTurn(id, message.id, expertMode))
+                state = state.withOutcomeError(repository.retryTurn(id, message.id))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ChatException) {
@@ -839,7 +830,6 @@ class ChatViewModel(
         val sendingAttachments = drafts
         val previousSessionId = sessionId
         val sendingDefaults = rememberChatDefaults()
-        val expertMode = state.expertMode
         val pendingImagePrompt = if (imagePrompt && editingId == null && drafts.any { it.isImage }) {
             ImagePromptSend(text, state.messages.lastOrNull()?.id, drafts)
         } else {
@@ -873,12 +863,11 @@ class ChatViewModel(
 
                 val outcome = if (editingId != null) {
                     // 编辑重发：在新分支上跑，旧分支留库
-                    repository.editMessage(id, editingId, text, expertMode)
+                    repository.editMessage(id, editingId, text)
                 } else {
                     repository.send(
                         sessionId = id,
                         text = text,
-                        expertMode = expertMode,
                         attachments = sendingAttachments.map {
                             PickedFile(
                                 id = it.id,
@@ -933,14 +922,13 @@ class ChatViewModel(
         if (state.isBusy || message.isUser) return
 
         val defaults = rememberChatDefaults()
-        val expertMode = state.expertMode
         stopSpeaking()
         autoSpeakPending = state.autoSpeak
         state = state.copy(isStreaming = true, error = null)
         launchChatOperation {
             try {
                 persistChatSettings(id, defaults)
-                state = state.withOutcomeError(repository.regenerate(id, message.id, expertMode))
+                state = state.withOutcomeError(repository.regenerate(id, message.id))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ChatException) {
@@ -958,14 +946,13 @@ class ChatViewModel(
         if (state.isBusy || message.isUser || !message.canContinue) return
 
         val defaults = rememberChatDefaults()
-        val expertMode = state.expertMode
         stopSpeaking()
         autoSpeakPending = state.autoSpeak
         state = state.copy(isStreaming = true, error = null)
         launchChatOperation {
             try {
                 persistChatSettings(id, defaults)
-                state = state.withOutcomeError(repository.continueGeneration(id, message.id, expertMode))
+                state = state.withOutcomeError(repository.continueGeneration(id, message.id))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ChatException) {
@@ -1007,7 +994,6 @@ class ChatViewModel(
         state = ChatUiState(
             providerId = state.providerId,
             modelId = state.modelId,
-            expertMode = state.expertMode,
             webSearchProvider = state.webSearchProvider,
             webSearchCredentials = state.webSearchCredentials,
             // 这些都是全局状态，开新对话不能跟着重置（尤其是 hasApiKey：
@@ -1028,10 +1014,6 @@ class ChatViewModel(
         if (state.isSwitchingModel) return
         state = state.copy(thinkingEnabled = enabled, effort = effort)
         persistStandalone()
-    }
-
-    fun setExpertMode(enabled: Boolean) {
-        viewModelScope.launch { settings.setExpertMode(enabled) }
     }
 
     fun toggleSearch() {
@@ -1140,14 +1122,13 @@ class ChatViewModel(
         if (state.isBusy) return
 
         val defaults = rememberChatDefaults()
-        val expertMode = state.expertMode
         stopSpeaking()
         autoSpeakPending = state.autoSpeak
         state = state.copy(isStreaming = true, error = null, errorKind = null)
         launchChatOperation {
             try {
                 persistChatSettings(id, defaults)
-                state = state.withOutcomeError(repository.regenerate(id, targetId, expertMode))
+                state = state.withOutcomeError(repository.regenerate(id, targetId))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ChatException) {
