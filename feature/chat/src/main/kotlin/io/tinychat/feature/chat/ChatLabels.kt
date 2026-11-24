@@ -91,15 +91,14 @@ private fun chatStatusResource(message: String): Int? = when (message) {
 /** Translate app-owned notices and preserve raw details returned by providers. */
 internal fun localizedChatStatus(res: Resources, message: String): String {
     chatStatusResource(message)?.let { return res.getString(it) }
-    if (message.startsWith("请求超时：超过 ") && message.endsWith(" 秒没有收到数据")) {
-        val seconds = message.removePrefix("请求超时：超过 ").removeSuffix(" 秒没有收到数据")
-        return res.getString(R.string.chat_stream_timeout, seconds)
+    streamTimeout.matchEntire(message)?.let { match ->
+        return res.getString(R.string.chat_stream_timeout, match.groupValues[1])
     }
-    if (message.endsWith(" 服务繁忙，稍后再试")) {
-        return res.getString(R.string.chat_named_provider_busy, message.removeSuffix(" 服务繁忙，稍后再试"))
+    namedProviderBusy.matchEntire(message)?.let { match ->
+        return res.getString(R.string.chat_named_provider_busy, match.groupValues[1])
     }
-    if (message.startsWith("已换到 ") && message.endsWith("，支持的历史附件会随对话发送")) {
-        val provider = message.removePrefix("已换到 ").removeSuffix("，支持的历史附件会随对话发送")
+    switchedProvider.matchEntire(message)?.let { match ->
+        val provider = match.groupValues[1]
         val name = if (provider == "新的服务商") res.getString(R.string.chat_the_new_provider) else provider
         return res.getString(R.string.chat_switched_to_supported_attachments_will_carry_over, name)
     }
@@ -109,13 +108,11 @@ internal fun localizedChatStatus(res: Resources, message: String): String {
     }
     namedAttachmentIssue.matchEntire(message)?.let { match ->
         val (fileName, reason) = match.destructured
-        when {
-            reason == "仅支持 PDF 和纯文本文件" -> {
-                return res.getString(R.string.chat_isn_t_supported_use_a_pdf_or, fileName)
-            }
-            reason.startsWith("超过 ") -> {
-                return res.getString(R.string.chat_exceeds, fileName, reason.removePrefix("超过 "))
-            }
+        if (reason == "仅支持 PDF 和纯文本文件") {
+            return res.getString(R.string.chat_isn_t_supported_use_a_pdf_or, fileName)
+        }
+        attachmentOverLimit.matchEntire(reason)?.let { over ->
+            return res.getString(R.string.chat_exceeds, fileName, over.groupValues[1])
         }
         chatStatusResource(reason)?.let {
             return res.getString(R.string.chat_attachment_error, fileName, res.getString(it))
@@ -123,6 +120,13 @@ internal fun localizedChatStatus(res: Resources, message: String): String {
     }
     return message
 }
+
+// 参数一律用正则分组取：以前的 removePrefix / removeSuffix 是在“拼好的展示串”上
+// 切字符，生产方多一个空格或换个措辞，用户看到的就会是半截话。
+private val streamTimeout = Regex("""^请求超时：超过 (.*) 秒没有收到数据$""", RegexOption.DOT_MATCHES_ALL)
+private val namedProviderBusy = Regex("""^(.*) 服务繁忙，稍后再试$""", RegexOption.DOT_MATCHES_ALL)
+private val switchedProvider = Regex("""^已换到 (.*)，支持的历史附件会随对话发送$""", RegexOption.DOT_MATCHES_ALL)
+private val attachmentOverLimit = Regex("""^超过 (.*)$""", RegexOption.DOT_MATCHES_ALL)
 
 private val oversizedAttachment = Regex("附件「(.*)」超过 (.*)", RegexOption.DOT_MATCHES_ALL)
 private val namedAttachmentIssue = Regex("附件「(.*)」：(.*)", RegexOption.DOT_MATCHES_ALL)
