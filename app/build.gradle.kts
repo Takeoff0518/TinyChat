@@ -22,8 +22,8 @@ android {
         applicationId = "top.tbpdt.tinychat"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 9
-        versionName = "1.0.8"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     androidResources.localeFilters += listOf("zh", "b+zh+Hant", "ja", "en", "ru", "fr", "es")

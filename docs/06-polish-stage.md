@@ -222,7 +222,7 @@
 五倍或十倍，问题一眼就能分出来。打断测试也不能省：连点、动画中途返回、旋转、切后台——
 过不了这几关的动画在真机上会显得廉价。
 
-帧耗时不看感觉，用 `adb shell dumpsys gfxinfo PACKAGE_ID framestats`（将 `PACKAGE_ID` 替换为被测 APK 的应用 ID），或看调试面板里的帧率读数列，
+帧耗时不看感觉，用 `adb shell dumpsys gfxinfo top.tbpdt.tinychat framestats` 或调试面板里的帧率读数列，
 和 §8 的基线数字比。
 
 ---

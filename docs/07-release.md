@@ -22,7 +22,7 @@
 keytool -genkeypair -v -keystore .local\keystore\tinychat-release.jks -storetype PKCS12 `
   -alias tinychat -keyalg RSA -keysize 4096 -validity 10950 `
   -storepass <口令> -keypass <口令> `
-  -dname "CN=<发布证书名称>"
+  -dname "CN=TinyChat, OU=Android, O=TinyChat, L=Unknown, ST=Unknown, C=CN"
 ```
 
 > ⚠️ **密钥和口令必须另存一份**（密码管理器或离线备份）。丢失之后，已经发出去的版本就再也做不出升级包了——用户只能卸载重装，数据一起没。
@@ -77,7 +77,7 @@ versionName = "1.0.0"  // 用户看到的版本
   app\build\outputs\apk\release\app-release.apk
 ```
 
-将输出的证书指纹与本地保留的发布证书记录比对，并确认 `Verified using v2 scheme: true`。
+应当看到 `CN=TinyChat`，以及 `Verified using v2 scheme: true`。
 
 ### 2.4 产物体检（**每次都要做**）
 

@@ -66,7 +66,7 @@ Mermaid
 五、应用图标与品牌图
 
     app 的启动图标、核心界面里的角色图，以及文档与 README 使用的同一张图
-    （core/designsystem/src/main/res/drawable-nodpi/tc_logo.webp、docs/assets/logo.png），
+    （core/designsystem/src/main/res/drawable-nodpi/tc_logo.png、docs/assets/logo.png），
     为本项目专用素材。
 
 
