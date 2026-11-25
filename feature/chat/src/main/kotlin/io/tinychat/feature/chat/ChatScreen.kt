@@ -2177,6 +2177,9 @@ private fun ModelEffortPill(
     modifier: Modifier = Modifier,
 ) {
     val palette = TcTheme.palette
+    // 抽屉是独立窗口：在它里面用 stringResource 会按**窗口自己的** Resources 解析，
+    // 实测切成日语后仍是英文。这里在**主窗口**取一次 Resources 带进去，保证跟着应用语言走。
+    val sheetRes = LocalResources.current
     var sheetOpen by remember { mutableStateOf(false) }
     val current = providers.firstOrNull { it.id == providerId }
     val currentModel = current?.model(modelId)
@@ -2224,7 +2227,7 @@ private fun ModelEffortPill(
                     .verticalScroll(rememberScrollState()),
             ) {
                 Text(
-                    text = stringResource(R.string.chat_model_and_reasoning),
+                    text = sheetRes.getString(R.string.chat_model_and_reasoning),
                     style = TcTypography.titleMedium,
                     color = palette.labelPrimary,
                 )
@@ -2234,7 +2237,7 @@ private fun ModelEffortPill(
                     val sameProvider = provider.id == providerId
                     val keyed = provider.id in keyedProviders
                     Text(
-                        text = provider.displayName + if (!keyed) "  " + stringResource(R.string.chat_no_api_key) else "",
+                        text = provider.displayName + if (!keyed) "  " + sheetRes.getString(R.string.chat_no_api_key) else "",
                         style = TcTypography.labelMedium,
                         color = if (keyed) palette.labelSecondary else palette.labelTertiary,
                         modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
@@ -2262,8 +2265,8 @@ private fun ModelEffortPill(
                             )
                             Text(
                                 text = when {
-                                    sameProvider && model.id == modelId -> stringResource(R.string.chat_current)
-                                    !keyed -> stringResource(R.string.chat_not_set_up)
+                                    sameProvider && model.id == modelId -> sheetRes.getString(R.string.chat_current)
+                                    !keyed -> sheetRes.getString(R.string.chat_not_set_up)
                                     else -> ""
                                 },
                                 style = TcTypography.bodySmall,
@@ -2275,26 +2278,26 @@ private fun ModelEffortPill(
 
                 if (supportsThinking || supportsEffort) {
                     Spacer(Modifier.height(14.dp))
-                    Text(stringResource(R.string.chat_reasoning_effort), style = TcTypography.labelMedium, color = palette.labelSecondary)
+                    Text(sheetRes.getString(R.string.chat_reasoning_effort), style = TcTypography.labelMedium, color = palette.labelSecondary)
                     Spacer(Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.selectableGroup(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        EffortChip(text = stringResource(R.string.chat_reasoning_off), selected = !thinkingEnabled) {
+                        EffortChip(text = sheetRes.getString(R.string.chat_reasoning_off), selected = !thinkingEnabled) {
                             onSetThinking(false, effort)
                         }
                         if (supportsEffort) {
                             ThinkingEffort.entries.forEach { option ->
                                 EffortChip(
-                                    text = localizedThinkingEffort(option),
+                                    text = localizedThinkingEffort(sheetRes, option),
                                     selected = thinkingEnabled && option == effort,
                                     onClick = { onSetThinking(true, option) },
                                 )
                             }
                         } else {
                             EffortChip(
-                                text = stringResource(R.string.chat_reasoning_on),
+                                text = sheetRes.getString(R.string.chat_reasoning_on),
                                 selected = thinkingEnabled,
                                 onClick = { onSetThinking(true, effort) },
                             )

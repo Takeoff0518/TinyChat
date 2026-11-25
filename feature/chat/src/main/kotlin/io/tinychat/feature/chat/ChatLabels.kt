@@ -2,11 +2,21 @@ package io.tinychat.feature.chat
 
 import android.content.res.Resources
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import io.tinychat.model.ThinkingEffort
 
 @Composable
-internal fun localizedThinkingEffort(effort: ThinkingEffort): String = stringResource(
+internal fun localizedThinkingEffort(effort: ThinkingEffort): String =
+    localizedThinkingEffort(LocalResources.current, effort)
+
+/**
+ * 非 Compose 场景（独立窗口里的浮层）用这个重载：显式传 Resources。
+ *
+ * 浮层是自己的窗口，在里面调 `stringResource` 会按窗口的资源解析，实测切成日语后
+ * 仍然出英文；所以调用方在**主窗口**取一次 Resources 传进来。
+ */
+internal fun localizedThinkingEffort(res: Resources, effort: ThinkingEffort): String = res.getString(
     when (effort) {
         ThinkingEffort.LOW -> R.string.chat_low
         ThinkingEffort.HIGH -> R.string.chat_high
