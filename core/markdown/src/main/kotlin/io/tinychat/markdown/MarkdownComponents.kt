@@ -41,7 +41,6 @@ import com.mikepenz.markdown.compose.elements.MarkdownOrderedList
 import com.mikepenz.markdown.compose.elements.MarkdownParagraph
 import com.mikepenz.markdown.compose.elements.MarkdownTable
 import com.mikepenz.markdown.compose.elements.MarkdownText
-import io.tinychat.designsystem.LocalTcFontScale
 import io.tinychat.designsystem.TcTheme
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownTokenTypes
@@ -166,40 +165,23 @@ private fun TcParagraph(model: MarkdownComponentModel) {
     val mine = anchorsIn(anchors, model.node.startOffset, model.node.endOffset)
     val citeCount = LocalCitationCount.current
     val settings = annotatorSettings()
-    // 段落拼装是纯函数：同一段文字、同一套样式与角标，结果永远一样。
-    // 消息滚出屏幕会被回收，滚回来要重算一次（48 块就是 48 次），所以按内容缓存（P-045）。
-    val fontScale = LocalTcFontScale.current
-    val cacheKey = remember(raw, mine, citeCount, fontScale) {
-        buildString {
-            append(fontScale)
-            append('|').append(citeCount)
-            append('|').append(mine.joinToString(",") { it.index.toString() })
-            append('|').append(raw)
-        }
+    val plainBuilt = buildAnnotatedString {
+        pushStyle(model.typography.paragraph.toSpanStyle())
+        buildMarkdownAnnotatedString(
+            content = model.content,
+            node = model.node,
+            annotatorSettings = settings,
+        )
+        pop()
     }
-    val built = remember(cacheKey) {
-        RenderCache.paragraphOrNull(cacheKey) ?: run {
-            val plainBuilt = buildAnnotatedString {
-                pushStyle(model.typography.paragraph.toSpanStyle())
-                buildMarkdownAnnotatedString(
-                    content = model.content,
-                    node = model.node,
-                    annotatorSettings = settings,
-                )
-                pop()
-            }
-            // 第三方搜索：把模型写在正文里的 `[k]` 就地换成角标；原生搜索的锚点仍然贴在段尾
-            val numbered = plainBuilt.withNumberedCitations(citeCount)
-            val result = if (mine.isEmpty()) {
-                numbered
-            } else {
-                buildAnnotatedString {
-                    append(numbered)
-                    mine.forEach { anchor -> appendInlineContent(CitationTagPrefix + anchor.index) }
-                }
-            }
-            RenderCache.putParagraph(cacheKey, result)
-            result
+    // 第三方搜索：把模型写在正文里的 `[k]` 就地换成角标；原生搜索的锚点仍然贴在段尾
+    val numbered = plainBuilt.withNumberedCitations(citeCount)
+    val built = if (mine.isEmpty()) {
+        numbered
+    } else {
+        buildAnnotatedString {
+            append(numbered)
+            mine.forEach { anchor -> appendInlineContent(CitationTagPrefix + anchor.index) }
         }
     }
     // 行内公式：流式中只吞 `$`（宽度稳定），消息结束后升级成 KaTeX 内联位图
