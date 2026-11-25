@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.text.format.Formatter
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.MediaStore
@@ -2618,31 +2619,26 @@ private fun QuickPromptChip(text: String, enabled: Boolean, onClick: () -> Unit)
 private fun DraftChip(draft: DraftAttachment, enabled: Boolean, onRemove: () -> Unit, onOpen: () -> Unit) {
     val palette = TcTheme.palette
     val load = rememberBitmapLoad(draft.thumbPath, 192)
-    Box(modifier = Modifier.size(56.dp)) {
+    val isPhoto = draft.isImage && load.bitmap != null
+    // 图片用正方形缩略图；其余文件用 2:1 的横卡，把文件名、类型、大小都露出来
+    val chip = if (isPhoto) Modifier.size(56.dp) else Modifier.width(128.dp).height(64.dp)
+    Box(modifier = chip) {
         Box(
-            modifier = Modifier
-                .size(56.dp)
+            modifier = chip
                 .clip(RoundedCornerShape(12.dp))
                 .background(palette.bubble)
                 .clickable(enabled = enabled, onClick = onOpen),
             contentAlignment = Alignment.Center,
         ) {
-            if (draft.isImage && load.bitmap != null) {
+            if (isPhoto) {
                 Image(
-                    bitmap = load.bitmap,
+                    bitmap = load.bitmap!!,
                     contentDescription = draft.fileName,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(TcIcons.File, null, tint = palette.labelSecondary, modifier = Modifier.size(20.dp))
-                    Text(
-                        text = draft.fileName.substringAfterLast('.').uppercase().take(4),
-                        style = TcTypography.bodySmall,
-                        color = palette.labelTertiary,
-                    )
-                }
+                DraftFileSummary(draft, palette)
             }
         }
         Box(
@@ -2661,6 +2657,46 @@ private fun DraftChip(draft: DraftAttachment, enabled: Boolean, onRemove: () -> 
                 tint = palette.bg,
                 modifier = Modifier.size(10.dp),
             )
+        }
+    }
+}
+
+/**
+ * 草稿里的文件卡片：文件名（超长省略）+「类型 · 大小」，与已发送消息里的那张卡一致。
+ *
+ * 以前非图片只是个 56dp 方块里塞「图标 + 扩展名」，用户看不出自己到底选了哪个文件。
+ */
+@Composable
+private fun DraftFileSummary(draft: DraftAttachment, palette: TcPalette) {
+    val context = LocalContext.current
+    val meta = remember(draft.fileName, draft.size) {
+        val type = draft.fileName.substringAfterLast('.', "").uppercase().take(4)
+        val size = if (draft.size > 0) Formatter.formatShortFileSize(context, draft.size) else ""
+        listOf(type, size).filter { it.isNotEmpty() }.joinToString(" · ")
+    }
+    Row(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(TcIcons.File, null, tint = palette.brand, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = draft.fileName,
+                style = TcTypography.bodySmall,
+                color = palette.labelPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (meta.isNotEmpty()) {
+                Text(
+                    text = meta,
+                    style = TcTypography.bodySmall,
+                    color = palette.labelTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
