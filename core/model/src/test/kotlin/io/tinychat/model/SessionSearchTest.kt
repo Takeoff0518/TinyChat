@@ -1,6 +1,7 @@
 package io.tinychat.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -61,8 +62,11 @@ class SessionSearchTest {
     @Test
     fun `标题为空时回落为新对话`() {
         val hit = buildSearchHit("s1", null, "正文关键词", "关键词")!!
+        val named = buildSearchHit("s2", "新对话", "正文关键词", "关键词")!!
 
         assertEquals("新对话", hit.title)
+        assertTrue(hit.untitled)
+        assertFalse(named.untitled)
     }
 
     @Test

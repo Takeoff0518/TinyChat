@@ -27,6 +27,9 @@ object TcMotion {
     /** 布局移动与展开：左右抽屉、思维链高度 */
     const val Panel = 200
 
+    /** 完整页面的进入和返回 */
+    const val Page = 250
+
     /** 底部抽屉上滑 */
     const val Sheet = 240
 

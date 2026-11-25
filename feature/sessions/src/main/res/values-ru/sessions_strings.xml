@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sessions_multi_select">Выбрать несколько</string>
+    <string name="sessions_settings">Настройки</string>
+    <string name="sessions_remove_selected">Эти чаты будут удалены из истории.</string>
+    <string name="sessions_delete">Удалить</string>
+    <string name="sessions_cancel">Отмена</string>
+    <string name="sessions_delete_chat">Удалить этот чат?</string>
+    <string name="sessions_remove_chat">Чат «%1$s» будет удалён из истории.</string>
+    <string name="sessions_search">Поиск по чатам…</string>
+    <string name="sessions_close_search">Закрыть поиск</string>
+    <string name="sessions_clear_search">Очистить поиск</string>
+    <string name="sessions_select_chats">Выбрать чаты</string>
+    <string name="sessions_close_selection">Отменить выбор</string>
+    <string name="sessions_pin">Закрепить</string>
+    <string name="sessions_unpin">Открепить</string>
+    <string name="sessions_empty">Чатов пока нет</string>
+    <string name="sessions_rename">Переименовать</string>
+    <string name="sessions_chat_actions">Действия с чатом</string>
+    <string name="sessions_no_results">Ничего не найдено</string>
+    <string name="sessions_rename_chat">Переименовать чат</string>
+    <string name="sessions_save">Сохранить</string>
+    <string name="sessions_new_chat">Новый чат</string>
+    <string name="sessions_group_pinned">Закреплённые</string>
+    <string name="sessions_group_today">Сегодня</string>
+    <string name="sessions_group_yesterday">Вчера</string>
+    <string name="sessions_group_week">За последние 7 дней</string>
+    <string name="sessions_group_month">За последние 30 дней</string>
+    <string name="sessions_group_earlier">Ранее</string>
+    <plurals name="sessions_delete_selected">
+        <item quantity="one">Удалить %d чат?</item>
+        <item quantity="few">Удалить %d чата?</item>
+        <item quantity="many">Удалить %d чатов?</item>
+        <item quantity="other">Удалить %d чата?</item>
+    </plurals>
+</resources>

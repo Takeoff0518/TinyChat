@@ -8,6 +8,7 @@ import io.tinychat.model.RequestPayload
 import io.tinychat.model.ResponsePayload
 import io.tinychat.model.Role
 import io.tinychat.model.TemplateResponsePayload
+import io.tinychat.net.protocol.AnthropicMessagesProtocol
 import io.tinychat.net.protocol.DeepSeekMessagesProtocol
 import io.tinychat.net.protocol.WireMessage
 import kotlinx.serialization.json.JsonObject
@@ -19,29 +20,40 @@ import kotlinx.serialization.json.contentOrNull
  * 历史轮次里的一个附件：只带重建请求需要的东西。
  *
  * - `remoteId`：官方 Files API 的 file_id，为 null = 没上传成功（导入的老数据、或上传失败），**不进请求**；
- * - `dataUri`：第三方视觉用的 `data:image/jpeg;base64,…`，由仓库在构建请求前压好；
+ * - `dataUri`：第三方协议用的内联图片或 PDF；`text` 是在本机读取的文件文字。
  * - 若该轮正文也为空、又没有可用的附件，整轮会被丢弃（与「孤立 USER」同处理）。
  */
 data class HistoryAttachment(
     val remoteId: String?,
     val isImage: Boolean,
-    /** 第三方视觉的内联图片；官方链路不用它 */
+    /** 第三方的内联图片或 PDF；官方链路不用它 */
     val dataUri: String? = null,
+    val fileName: String? = null,
+    val mime: String? = null,
+    val text: String? = null,
 ) {
     /** 有没有东西能进请求（具体形状由 [ImageFlavor] 决定） */
-    val usable: Boolean get() = !remoteId.isNullOrBlank() || !dataUri.isNullOrBlank()
+    val usable: Boolean get() = !remoteId.isNullOrBlank() || !dataUri.isNullOrBlank() || text != null
+}
+
+internal fun HistoryAttachment.documentTextBlock(): JsonObject? {
+    val content = text?.takeIf { !isImage && it.isNotBlank() } ?: return null
+    val name = fileName.orEmpty().ifBlank { "附件" }
+    return buildJsonObject {
+        put("type", JsonPrimitive("text"))
+        put("text", JsonPrimitive("[附件 $name]\n$content\n[/附件]\n\n"))
+    }
 }
 
 /**
- * 图片块的形状（决策 53）。
+ * 各协议的附件块。
  *
  * - `DEEPSEEK`：官方 Files API，`{"type":"image","source":{"type":"file","file_id":…}}`；
- * - `OPENAI`：OpenAI 兼容链路，`{"type":"image_url","image_url":{"url":"data:…"}}`，
- *   历史里的图每一轮都要重发（那边没有服务端文件引用）。
- *
- * 文件（PDF/Word）只有官方支持，第三方链路一律丢弃。
+ * - `OPENAI`：内联 `image_url`、PDF 文件块和文本内容；
+ * - `ANTHROPIC`：Base64 `image`、Base64 PDF 和文本内容。
+ * 第三方协议的内联附件从本地文件重建。
  */
-enum class ImageFlavor { DEEPSEEK, OPENAI }
+enum class ImageFlavor { DEEPSEEK, OPENAI, ANTHROPIC }
 
 /** 上下文构建的一段：消息 + 它的碎片（已按 ord 排好）+ 它的附件。 */
 data class ContextTurn(
@@ -114,7 +126,11 @@ object ContextRebuilder {
                     // 规则 5：用这条 USER 自己的快照（历史不可改，否则前缀缓存全废）
                     emitReminder(user.message.reminderSnapshot)
                     out += userMessage(userText, attachments, flavor)
-                    out += turn.assistantMessage(assistantText)
+                    out += if (flavor == ImageFlavor.ANTHROPIC) {
+                        WireMessage.text(WireMessage.ROLE_ASSISTANT, assistantText)
+                    } else {
+                        turn.assistantMessage(assistantText)
+                    }
                     pendingUser = null
                 }
             }
@@ -153,10 +169,8 @@ object ContextRebuilder {
                             },
                         )
                     }
-                    // 第三方：只发图片，文件不支持；图片内联成 data URI
-                    ImageFlavor.OPENAI -> attachment.dataUri
-                        ?.takeIf { attachment.isImage }
-                        ?.let { add(openAiImageBlock(it)) }
+                    ImageFlavor.OPENAI -> openAiAttachmentBlock(attachment)?.let { add(it) }
+                    ImageFlavor.ANTHROPIC -> AnthropicMessagesProtocol.attachmentBlock(attachment)?.let { add(it) }
                 }
             }
             if (text.isNotBlank()) {
@@ -182,11 +196,28 @@ object ContextRebuilder {
         )
     }
 
+    private fun openAiAttachmentBlock(attachment: HistoryAttachment): JsonObject? {
+        val uri = attachment.dataUri
+        val name = attachment.fileName.orEmpty().ifBlank { "附件" }
+        return when {
+            attachment.isImage && uri != null -> openAiImageBlock(uri)
+            uri != null && attachment.mime == "application/pdf" -> buildJsonObject {
+                put("type", JsonPrimitive("file"))
+                put("file", buildJsonObject {
+                    put("filename", JsonPrimitive(name))
+                    put("file_data", JsonPrimitive(uri))
+                })
+            }
+            else -> attachment.documentTextBlock()
+        }
+    }
+
     private fun ContextTurn.usableAttachments(flavor: ImageFlavor): List<HistoryAttachment> =
         attachments.filter {
             when (flavor) {
                 ImageFlavor.DEEPSEEK -> !it.remoteId.isNullOrBlank()
-                ImageFlavor.OPENAI -> it.isImage && !it.dataUri.isNullOrBlank()
+                ImageFlavor.OPENAI -> !it.dataUri.isNullOrBlank() || it.text != null
+                ImageFlavor.ANTHROPIC -> AnthropicMessagesProtocol.acceptsAttachment(it)
             }
         }
 

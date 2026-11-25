@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.tinychat.designsystem.TcIcons
 import io.tinychat.designsystem.TcLogoMark
@@ -53,8 +54,8 @@ fun AboutScreen(
             .background(palette.bg),
     ) {
         TcTopBar(
-            title = "关于",
-            leading = { TcIconButton(TcIcons.Back, "返回", onBack) },
+            title = stringResource(R.string.prefs_detail_about_title),
+            leading = { TcIconButton(TcIcons.Back, stringResource(R.string.prefs_detail_back), onBack) },
         )
         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
             // 头部（决策 62）：图标 / 名称 / 版本居中三行，下面的入口行保持原样
@@ -69,13 +70,17 @@ fun AboutScreen(
                 Text("TinyChat", style = TcTypography.headlineSmall, color = palette.labelPrimary)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = if (versionName.isBlank()) "版本未知" else "版本 $versionName",
+                    text = if (versionName.isBlank()) {
+                        stringResource(R.string.prefs_detail_version_unknown)
+                    } else {
+                        stringResource(R.string.prefs_detail_version, versionName)
+                    },
                     style = TcTypography.labelMedium,
                     color = palette.labelTertiary,
                 )
             }
             TcListRow(
-                title = "开源项目",
+                title = stringResource(R.string.prefs_detail_source),
                 subtitle = REPOSITORY_URL,
                 onClick = { openUrl(context, REPOSITORY_URL) },
                 trailing = {
@@ -88,7 +93,7 @@ fun AboutScreen(
                 },
             )
             TcListRow(
-                title = "开源许可",
+                title = stringResource(R.string.prefs_detail_licenses),
                 onClick = onOpenLicenses,
                 trailing = {
                     Icon(
@@ -101,7 +106,7 @@ fun AboutScreen(
             )
             // 崩溃兜底写下来的诊断信息（M9-2）：不放这个入口，报告就只躺在沙盒里
             TcListRow(
-                title = "诊断信息",
+                title = stringResource(R.string.prefs_detail_diagnostics),
                 onClick = onOpenDiagnostics,
                 trailing = {
                     Icon(
@@ -127,46 +132,42 @@ fun LicenseScreen(onBack: () -> Unit) {
             .background(palette.bg),
     ) {
         TcTopBar(
-            title = "开源许可",
-            leading = { TcIconButton(TcIcons.Back, "返回", onBack) },
+            title = stringResource(R.string.prefs_detail_licenses),
+            leading = { TcIconButton(TcIcons.Back, stringResource(R.string.prefs_detail_back), onBack) },
         )
         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
             TcSectionLabel("Apache License 2.0")
+            LicenseRow(stringResource(R.string.prefs_detail_kotlin_stdlib))
             ApacheComponents.forEach { LicenseRow(it) }
 
             TcSectionLabel("MIT License")
-            MitComponents.forEach { (name, note) -> LicenseRow(name, note) }
+            LicenseRow(
+                stringResource(R.string.prefs_detail_katex_fonts),
+                stringResource(R.string.prefs_detail_katex_note),
+            )
+            MitComponents.forEach { (name, note) -> LicenseRow(name, stringResource(note)) }
 
-            TcSectionLabel("仅构建与测试使用")
+            TcSectionLabel(stringResource(R.string.prefs_detail_build_test))
             TestComponents.forEach { (name, license) -> LicenseRow(name, license) }
 
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = "以上组件按各自的许可证分发，版权属于各自作者。",
-                style = TcTypography.bodySmall,
-                color = palette.labelTertiary,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
             Spacer(Modifier.height(24.dp))
         }
     }
 }
 
 private val ApacheComponents = listOf(
-    "Kotlin 标准库",
     "kotlinx.coroutines",
     "kotlinx.serialization",
-    "AndroidX（core-ktx、activity、lifecycle、navigation、Room、DataStore、core-splashscreen）",
-    "Jetpack Compose（UI、Foundation、Material3）",
+    "AndroidX (core-ktx, activity, lifecycle, navigation, Room, DataStore, core-splashscreen)",
+    "Jetpack Compose (UI, Foundation, Material 3)",
     "OkHttp",
     "Coil",
     "multiplatform-markdown-renderer",
 )
 
 private val MitComponents = listOf(
-    "KaTeX（含随包分发的字体）" to "数学公式渲染",
-    "Mermaid" to "流程图渲染",
-    "deepseek-ai/chat-demo" to "图标与界面参考，Copyright (c) DeepSeek",
+    "Mermaid" to R.string.prefs_detail_mermaid_note,
+    "deepseek-ai/chat-demo" to R.string.prefs_detail_chat_demo_note,
 )
 
 private val TestComponents = listOf(
@@ -178,7 +179,7 @@ private fun openUrl(context: Context, url: String) {
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
     val opened = runCatching { context.startActivity(intent) }.isSuccess
     if (!opened) {
-        Toast.makeText(context, "没有可用的浏览器", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, R.string.prefs_detail_browser_missing, Toast.LENGTH_SHORT).show()
     }
 }
 

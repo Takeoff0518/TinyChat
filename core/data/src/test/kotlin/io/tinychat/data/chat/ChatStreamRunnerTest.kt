@@ -17,9 +17,14 @@ import io.tinychat.net.protocol.PreparedRequest
 import io.tinychat.net.transport.ChatException
 import io.tinychat.net.transport.ChatTransport
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -179,6 +184,28 @@ class ChatStreamRunnerTest {
         assertTrue("取消要向上传播", error is CancellationException)
         assertEquals(MessageStatus.INCOMPLETE, db.messageDao().byId(id)!!.status)
         assertTrue("取消前的内容必须留住", db.fragmentDao().byMessage(id).isNotEmpty())
+    }
+
+    @Test
+    fun `cancelled coroutine flushes buffered text and clears WIP`() = runBlocking {
+        val id = newAssistantMessage()
+        val buffered = CompletableDeferred<Unit>()
+        val stream = object : ChatTransport {
+            override fun stream(request: PreparedRequest): Flow<SseEvent> = flow {
+                emit(SseEvent(null, """{"type":"content_block_start","index":0,"content_block":{"type":"text"}}"""))
+                emit(SseEvent(null, """{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"buffered answer"}}"""))
+                buffered.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        val throttled = ChatStreamRunner(db.messageDao(), db.fragmentDao(), clock = { 0L })
+        val work = launch { throttled.run(id, request(), stream) }
+        withTimeout(5_000) { buffered.await() }
+        assertTrue(db.fragmentDao().byMessage(id).isEmpty())
+
+        work.cancelAndJoin()
+        assertEquals(MessageStatus.INCOMPLETE, db.messageDao().byId(id)?.status)
+        assertTrue(db.fragmentDao().byMessage(id).single().payload.contains("buffered answer"))
     }
 
     @Test

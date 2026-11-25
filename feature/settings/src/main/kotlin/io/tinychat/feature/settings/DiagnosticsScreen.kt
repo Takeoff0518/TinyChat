@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,10 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.tinychat.designsystem.TcIcons
 import io.tinychat.designsystem.TcTheme
 import io.tinychat.designsystem.TcTypography
+import io.tinychat.ui.TcAlertDialog
 import io.tinychat.ui.TcButton
 import io.tinychat.ui.TcButtonVariant
 import io.tinychat.ui.TcIconButton
@@ -60,14 +61,10 @@ fun DiagnosticsScreen(
     items: List<DiagnosticsItem>,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
-    onRead: (String) -> String,
-    onDelete: (String) -> Unit,
+    onOpen: (String) -> Unit,
     onClearAll: () -> Unit,
 ) {
     val palette = TcTheme.palette
-    val context = LocalContext.current
-    var opened by remember { mutableStateOf<DiagnosticsItem?>(null) }
-    var pendingClear by remember { mutableStateOf<DiagnosticsItem?>(null) }
     var confirmClearAll by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { onRefresh() }
@@ -77,30 +74,74 @@ fun DiagnosticsScreen(
             .fillMaxSize()
             .background(palette.bg),
     ) {
-        val detail = opened
-        if (detail != null) {
-            val body = remember(detail.id) { onRead(detail.id) }
-            TcTopBar(
-                title = "诊断信息",
-                leading = { TcIconButton(TcIcons.Back, "返回", { opened = null }) },
-            )
+        TcTopBar(
+            title = stringResource(R.string.prefs_detail_diagnostics),
+            leading = { TcIconButton(TcIcons.Back, stringResource(R.string.prefs_detail_back), onBack) },
+            trailing = {
+                if (items.isNotEmpty()) {
+                    TextButton(onClick = { confirmClearAll = true }) {
+                        Text(stringResource(R.string.prefs_detail_clear), color = palette.labelSecondary, style = TcTypography.labelLarge)
+                    }
+                }
+            },
+        )
+        if (items.isEmpty()) {
+            EmptyDiagnostics()
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(items, key = { it.id }) { item ->
+                    TcListRow(
+                        title = item.time,
+                        subtitle = item.scene,
+                        onClick = { onOpen(item.id) },
+                    )
+                }
+            }
+        }
+    }
+
+    if (confirmClearAll) {
+        ClearDiagnosticsDialog(
+            onDismiss = { confirmClearAll = false },
+            onClear = {
+                confirmClearAll = false
+                onClearAll()
+                onRefresh()
+            },
+        )
+    }
+}
+
+@Composable
+fun DiagnosticReportScreen(
+    time: String?,
+    body: String?,
+    onBack: () -> Unit,
+    onClear: () -> Unit,
+) {
+    val palette = TcTheme.palette
+    val context = LocalContext.current
+    var confirmClear by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxSize().background(palette.bg)) {
+        TcTopBar(
+            title = stringResource(R.string.prefs_detail_diagnostics),
+            leading = { TcIconButton(TcIcons.Back, stringResource(R.string.prefs_detail_back), onBack) },
+        )
+        if (body == null) {
+            EmptyDiagnostics()
+        } else {
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                Text(
-                    text = detail.time,
-                    style = TcTypography.labelMedium,
-                    color = palette.labelTertiary,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = body,
-                    style = TcTypography.bodySmall,
-                    color = palette.labelPrimary,
-                )
+                if (time != null) {
+                    Text(time, style = TcTypography.labelMedium, color = palette.labelTertiary)
+                    Spacer(Modifier.height(8.dp))
+                }
+                Text(body, style = TcTypography.bodySmall, color = palette.labelPrimary)
             }
             Row(
                 modifier = Modifier
@@ -109,98 +150,60 @@ fun DiagnosticsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 TcButton(
-                    text = "复制",
+                    text = stringResource(R.string.prefs_detail_diagnostics_copy),
                     onClick = { copyToClipboard(context, body) },
                     modifier = Modifier.weight(1f),
                 )
                 TcButton(
-                    text = "清除",
-                    onClick = { pendingClear = detail },
+                    text = stringResource(R.string.prefs_detail_clear),
+                    onClick = { confirmClear = true },
                     modifier = Modifier.weight(1f),
                     variant = TcButtonVariant.Outline,
                 )
             }
-        } else {
-            TcTopBar(
-                title = "诊断信息",
-                leading = { TcIconButton(TcIcons.Back, "返回", onBack) },
-                trailing = {
-                    if (items.isNotEmpty()) {
-                        TextButton(onClick = { confirmClearAll = true }) {
-                            Text("清除", color = palette.labelSecondary, style = TcTypography.labelLarge)
-                        }
-                    }
-                },
-            )
-            if (items.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "暂无记录",
-                        style = TcTypography.bodyMedium,
-                        color = palette.labelTertiary,
-                    )
-                }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(items, key = { it.id }) { item ->
-                        TcListRow(
-                            title = item.time,
-                            subtitle = item.scene,
-                            onClick = { opened = item },
-                        )
-                    }
-                }
-            }
         }
     }
 
-    if (pendingClear != null) {
-        AlertDialog(
-            onDismissRequest = { pendingClear = null },
-            title = { Text("清除诊断信息？") },
-            text = { Text("清除后无法恢复，不会影响你的聊天记录。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    val target = pendingClear
-                    pendingClear = null
-                    if (target != null) {
-                        onDelete(target.id)
-                        opened = null
-                        onRefresh()
-                    }
-                }) { Text("清除", color = palette.danger) }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingClear = null }) {
-                    Text("取消", color = palette.labelSecondary)
-                }
-            },
-        )
-    }
-
-    if (confirmClearAll) {
-        AlertDialog(
-            onDismissRequest = { confirmClearAll = false },
-            title = { Text("清除诊断信息？") },
-            text = { Text("清除后无法恢复，不会影响你的聊天记录。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmClearAll = false
-                    onClearAll()
-                    onRefresh()
-                }) { Text("清除", color = palette.danger) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmClearAll = false }) {
-                    Text("取消", color = palette.labelSecondary)
-                }
+    if (confirmClear) {
+        ClearDiagnosticsDialog(
+            onDismiss = { confirmClear = false },
+            onClear = {
+                confirmClear = false
+                onClear()
             },
         )
     }
 }
 
+@Composable
+private fun EmptyDiagnostics() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            text = stringResource(R.string.prefs_detail_diagnostics_empty),
+            style = TcTypography.bodyMedium,
+            color = TcTheme.palette.labelTertiary,
+        )
+    }
+}
+
+@Composable
+private fun ClearDiagnosticsDialog(onDismiss: () -> Unit, onClear: () -> Unit) {
+    val palette = TcTheme.palette
+    TcAlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.prefs_detail_diagnostics_clear)) },
+        text = { Text(stringResource(R.string.prefs_detail_diagnostics_clear_warning)) },
+        confirmButton = {
+            TextButton(onClick = onClear) { Text(stringResource(R.string.prefs_detail_clear), color = palette.danger) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.prefs_detail_cancel), color = palette.labelSecondary) }
+        },
+    )
+}
+
 private fun copyToClipboard(context: Context, text: String) {
     val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-    manager?.setPrimaryClip(ClipData.newPlainText("TinyChat 诊断信息", text))
-    Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+    manager?.setPrimaryClip(ClipData.newPlainText(context.getText(R.string.prefs_detail_diagnostics_clip), text))
+    Toast.makeText(context, R.string.prefs_detail_diagnostics_copied, Toast.LENGTH_SHORT).show()
 }

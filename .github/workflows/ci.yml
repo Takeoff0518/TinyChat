@@ -15,6 +15,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 构建脚本不许屏蔽 lint 规则
+        # 2026-11-24：上一版 PR 为了让 CI 变绿，直接在三个 build.gradle.kts 里
+        # `disable += "LocalContextGetResourceValueCall"`。规则被关掉之后，lint 就再也
+        # 拦不住同一类问题。要修就修代码，不要把检查器关了。
+        run: |
+          if grep -rn "disable +=" --include=build.gradle.kts .; then
+            echo "::error::构建脚本里出现 lint 屏蔽，请修代码而不是关规则"
+            exit 1
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

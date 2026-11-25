@@ -106,7 +106,7 @@ object ShareCapture {
         val decor = activity.window.decorView as ViewGroup
         // 外层容器负责把宽度约束焊死；ComposeView 自己不能被继承（final）
         val container = FixedWidthHost(activity, WIDTH_PX)
-        val view = ComposeView(activity)
+        val view = ComposeView(context)
         view.setContent {
             // 分享图**固定浅色**：深色主题的长图发给别人会糊成一片
             CompositionLocalProvider(LocalDensity provides Density(density)) {

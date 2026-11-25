@@ -1,5 +1,6 @@
 package io.tinychat.markdown
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -113,13 +114,13 @@ internal fun TcCodeBlock(code: String, language: String?, style: TextStyle) {
             ) {
                 Icon(
                     imageVector = if (copied) TcIcons.Check else TcIcons.Copy,
-                    contentDescription = if (copied) "已复制" else "复制代码",
+                    contentDescription = if (copied) stringResource(R.string.markdown_copied) else stringResource(R.string.markdown_copy_code),
                     tint = if (copied) palette.labelPrimary else palette.labelTertiary,
                     modifier = Modifier.size(14.dp),
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = if (copied) "已复制" else "复制",
+                    text = if (copied) stringResource(R.string.markdown_copied) else stringResource(R.string.markdown_copy),
                     style = MarkdownCodeBannerStyle,
                     color = if (copied) palette.labelPrimary else palette.labelTertiary,
                 )
@@ -140,7 +141,7 @@ internal fun TcCodeBlock(code: String, language: String?, style: TextStyle) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = if (expanded) "收起" else "展开全部（共 $lineCount 行）",
+                    text = if (expanded) stringResource(R.string.markdown_collapse_code) else stringResource(R.string.markdown_expand_code, lineCount),
                     style = MarkdownCodeBannerStyle,
                     color = palette.labelSecondary,
                 )

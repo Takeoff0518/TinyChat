@@ -1,4 +1,4 @@
-﻿package io.tinychat.data.chat
+package io.tinychat.data.chat
 
 import androidx.test.core.app.ApplicationProvider
 import io.tinychat.data.attachment.AttachmentStore

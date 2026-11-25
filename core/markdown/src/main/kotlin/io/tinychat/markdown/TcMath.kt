@@ -1,5 +1,6 @@
 package io.tinychat.markdown
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -181,7 +182,7 @@ private fun MathPlaceholder() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "公式渲染中",
+            text = stringResource(R.string.markdown_rendering_math),
             style = TcTypography.bodySmall,
             color = palette.labelTertiary,
         )

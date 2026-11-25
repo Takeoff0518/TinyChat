@@ -1,13 +1,10 @@
 package io.tinychat.feature.chat
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -17,8 +14,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -27,30 +24,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.invisibleToUser
-import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.tinychat.designsystem.TcIcons
@@ -61,7 +50,6 @@ import io.tinychat.model.Usage
 import io.tinychat.model.billing.Money
 import io.tinychat.model.billing.UsageSummary
 import io.tinychat.ui.TcIconButton
-import kotlin.math.roundToInt
 
 /** 说明文案（点标签展开）。集中在一处，做 i18n 时只改这里。 */
 object UsageGlossary {
@@ -72,17 +60,18 @@ object UsageGlossary {
     const val BALANCE = "balance"
     const val USAGE_TOTAL = "usageTotal"
 
+    @Composable
     fun of(key: String): String = when (key) {
         CONTEXT ->
-            "这一轮实际发给模型的全部内容，占模型上限的比例。"
+            stringResource(R.string.chat_how_much_of_the_model_s_context)
         CACHE_HIT ->
-            "服务端直接复用了上一轮的对话内容，不用重新计算。"
+            stringResource(R.string.chat_the_provider_reused_part_of_the_previous)
         COST ->
-            "按服务商的价目表估算，和真实账单可能有几分钱误差。"
+            stringResource(R.string.chat_the_actual_charge_may_differ_from_this)
         BALANCE ->
-            "通过服务商接口获取的账户余额。"
+            stringResource(R.string.chat_balance_reported_by_the_provider)
         USAGE_TOTAL ->
-            "本会话的累计用量数据，包括所有重新生成和重新编辑的版本。"
+            stringResource(R.string.chat_total_usage_for_this_chat_including_edited)
         else -> ""
     }
 }
@@ -100,13 +89,16 @@ fun ContextRing(
         percent >= 0.4f -> palette.warning
         else -> palette.brand
     }
+    val openUsage = stringResource(R.string.chat_open_usage_and_costs)
     Box(
         modifier = modifier
             .size(40.dp)
             .clip(CircleShape)
+            .semantics { contentDescription = openUsage }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
@@ -136,10 +128,14 @@ fun ContextRing(
 @Composable
 fun UsageStatsLine(usage: Usage, costMicros: Long?) {
     val palette = TcTheme.palette
+    val tokens = stringResource(
+        R.string.chat_usage_stats_line,
+        Money.tokens(usage.cacheHitTokens.toLong()),
+        Money.tokens(usage.promptTokens.toLong()),
+        Money.tokens(usage.completionTokens.toLong()),
+    )
     val line = buildString {
-        append("${Money.tokens(usage.cacheHitTokens.toLong())} 命中  ")
-        append("${Money.tokens(usage.promptTokens.toLong())} 未命中  ")
-        append("${Money.tokens(usage.completionTokens.toLong())} 输出")
+        append(tokens)
         // 第三方服务商没有单价表（CostCalculator 返回 0）：只显示 token，不编一个 ￥0.0000
         if (costMicros != null && costMicros > 0) append("  ${Money.format(costMicros)}")
     }
@@ -151,22 +147,13 @@ fun UsageStatsLine(usage: Usage, costMicros: Long?) {
     )
 }
 
-/** 面板宽度：屏宽 × 0.82，最大 320dp（02 §12.10）。左滑手势按它换算进度，所以提出来共用。 */
-fun usageDrawerWidth(screenWidthDp: Int): Dp = (screenWidthDp * 0.82f).coerceAtMost(320f).dp
-
 /**
- * 右侧「用量与费用」抽屉（M7-2，决策 27）。
+ * 「用量与费用」抽屉内容。
  *
- * 只放会话级汇总：上下文占比 + 进度条、token 五项、账户余额。
- * 不出现本轮明细（在消息下方）、不出现脚注小字、不放刷新按钮。
- *
- * 位移与遮罩都跟着 [progress] 走（P-028）：拖拽期间由手指直接改，松手由调用方结算后补一段
- * 动画，所以这里不自己管进出场 —— 进出场如果留在这里，那就会有两个动画源。
+ * 展示会话的上下文占比、Token 用量、预估费用及可用的账户资料。
  */
 @Composable
-fun UsageDrawer(
-    /** 展开进度：0 = 完全收起、1 = 完全展开。跟手，拖一半就是一半。 */
-    progress: Float,
+fun UsageDrawerContent(
     summary: UsageSummary,
     contextUsed: Int,
     contextWindow: Int,
@@ -174,197 +161,149 @@ fun UsageDrawer(
     /** 订阅额度（M8-6）：OpenCode Go 的三窗口；null = 不是订阅制或没取到 */
     quota: QuotaSnapshot? = null,
     onDismiss: () -> Unit,
-    onDragStart: () -> Unit,
-    onDragDelta: (dxPx: Float) -> Unit,
-    onDragEnd: (velocityDp: Float) -> Unit,
 ) {
-    // 收起时也整块留在树上、只推到屏幕外：首次组合 + 测量的钱要在启动后先付掉，
-    // 否则第一次划出来时主线程会卡一下（左侧会话抽屉踩过这个坑，P-032）
-    var warmed by remember { mutableStateOf(progress > 0f) }
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        warmed = true
-    }
-    if (progress <= 0f && !warmed) return
-
     val palette = TcTheme.palette
-    val width = usageDrawerWidth(LocalConfiguration.current.screenWidthDp)
-    val widthPx = with(LocalDensity.current) { width.toPx() }
-    val densityValue = LocalDensity.current.density
     var expanded by remember { mutableStateOf<String?>(null) }
 
-    // draggable 的状态是 remember 出来的：直接闭包会一直用首次那个回调
-    val dragDelta = rememberUpdatedState(onDragDelta)
-    val dragState = rememberDraggableState { delta -> dragDelta.value(delta) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight()
+            .background(palette.bg)
+            .safeDrawingPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 20.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(R.string.chat_usage_and_costs),
+                style = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
+                color = palette.labelPrimary,
+            )
+            Spacer(Modifier.weight(1f))
+            TcIconButton(TcIcons.Close, stringResource(R.string.chat_close), onDismiss)
+        }
 
-    Box(Modifier.fillMaxSize()) {
-        // 收起时不要这张遮罩：它全屏可点，会把聊天页的点击全吃掉
-        if (progress > 0f) {
+        Spacer(Modifier.height(16.dp))
+
+        // 上下文占比
+        val percent = contextRatio(contextUsed, contextWindow)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ExplainableLabel(stringResource(R.string.chat_context_used), UsageGlossary.CONTEXT, expanded) { expanded = it }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = if (contextWindow > 0) "${(percent * 100).toInt()}%" else "—",
+                style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold),
+                color = palette.labelPrimary,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = if (contextWindow > 0) {
+                    "~${compactTokens(contextUsed)} / ${compactTokens(contextWindow)}"
+                } else {
+                    "~${compactTokens(contextUsed)}"
+                },
+                style = TextStyle(fontSize = 12.sp),
+                color = palette.labelTertiary,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(palette.inlineCodeBg),
+        ) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.32f * progress))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClickLabel = "关闭",
-                        onClick = onDismiss,
+                    .fillMaxWidth(percent)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(
+                        when {
+                            percent >= 0.8f -> palette.danger
+                            percent >= 0.4f -> palette.warning
+                            else -> palette.brand
+                        },
                     ),
             )
         }
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
-            // 位移单独放这一层：offset 的 lambda 每帧读进度，不触发重组
-            Box(modifier = Modifier.offset { IntOffset(((1f - progress) * widthPx).roundToInt(), 0) }) {
-                Column(
-                    modifier = Modifier
-                        .width(width)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
-                        .background(palette.bg)
-                        .semantics {
-                            paneTitle = "用量与费用"
-                            // 收在屏幕外时对读屏也要藏起来
-                            if (progress <= 0f) invisibleToUser()
-                        }
-                        // 面板上向右拖关闭（02 §12.10 一直写着「可右滑关闭」，之前没实现）
-                        .draggable(
-                            orientation = Orientation.Horizontal,
-                            state = dragState,
-                            onDragStarted = { onDragStart() },
-                            onDragStopped = { velocity -> onDragEnd(velocity / densityValue) },
-                        )
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 20.dp),
-                ) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "用量与费用",
-                            style = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
-                            color = palette.labelPrimary,
-                        )
-                        Spacer(Modifier.weight(1f))
-                        TcIconButton(TcIcons.Close, "关闭", onDismiss)
-                    }
+        if (expanded == UsageGlossary.CONTEXT) {
+            GlossaryText(UsageGlossary.CONTEXT)
+        }
 
-                    Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(28.dp))
+        ExplainableLabel(stringResource(R.string.chat_token_usage), UsageGlossary.USAGE_TOTAL, expanded) { expanded = it }
+        if (expanded == UsageGlossary.USAGE_TOTAL) {
+            GlossaryText(UsageGlossary.USAGE_TOTAL)
+        }
 
-                    // 上下文占比
-                    val percent = contextRatio(contextUsed, contextWindow)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ExplainableLabel("上下文已用", UsageGlossary.CONTEXT, expanded) { expanded = it }
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            text = "${(percent * 100).toInt()}%",
-                            style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold),
-                            color = palette.labelPrimary,
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            text = "~${compactTokens(contextUsed)} / ${compactTokens(contextWindow)}",
-                            style = TextStyle(fontSize = 12.sp),
-                            color = palette.labelTertiary,
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(palette.inlineCodeBg),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(percent)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    when {
-                                        percent >= 0.8f -> palette.danger
-                                        percent >= 0.4f -> palette.warning
-                                        else -> palette.brand
-                                    },
-                                ),
-                        )
-                    }
-                    if (expanded == UsageGlossary.CONTEXT) {
-                        GlossaryText(UsageGlossary.CONTEXT)
-                    }
-
-                    Spacer(Modifier.height(28.dp))
-                    ExplainableLabel("Token 用量", UsageGlossary.USAGE_TOTAL, expanded) { expanded = it }
-                    if (expanded == UsageGlossary.USAGE_TOTAL) {
-                        GlossaryText(UsageGlossary.USAGE_TOTAL)
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-                    Row(Modifier.fillMaxWidth()) {
-                        Column(Modifier.weight(1f)) {
-                            ExplainableLabel("预估费用", UsageGlossary.COST, expanded) { expanded = it }
-                            Text(
-                                text = if (summary.costMicros == 0L) "--" else Money.format(summary.costMicros),
-                                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
-                                color = palette.labelPrimary,
-                                modifier = Modifier.padding(top = 6.dp),
-                            )
-                        }
-                        Column(Modifier.weight(1f)) {
-                            ExplainableLabel("缓存命中", UsageGlossary.CACHE_HIT, expanded) { expanded = it }
-                            Text(
-                                text = summary.cacheHitRate?.let { "%.1f%%".format(it * 100) } ?: "--",
-                                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
-                                color = palette.labelPrimary,
-                                modifier = Modifier.padding(top = 6.dp),
-                            )
-                        }
-                    }
-                    if (expanded == UsageGlossary.COST) GlossaryText(UsageGlossary.COST)
-                    if (expanded == UsageGlossary.CACHE_HIT) GlossaryText(UsageGlossary.CACHE_HIT)
-
-                    val hasData = !summary.isEmpty
-                    MetricBlock("未缓存输入", summary.usage.promptTokens, hasData)
-                    MetricBlock("缓存读取", summary.usage.cacheHitTokens, hasData)
-                    MetricBlock("输出", summary.usage.completionTokens, hasData)
-
-                    val hasAccount = quota != null || balanceText != null
-                    if (hasAccount) {
-                        Spacer(Modifier.height(20.dp))
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(palette.borderL2),
-                        )
-                        Spacer(Modifier.height(20.dp))
-
-                        ExplainableLabel("账户", UsageGlossary.BALANCE, expanded) { expanded = it }
-                        Spacer(Modifier.height(12.dp))
-                        if (quota != null) {
-                            Text(
-                                text = "订阅额度",
-                                style = TextStyle(fontSize = 13.sp),
-                                color = palette.labelSecondary,
-                            )
-                            quota.windows.forEach { window ->
-                                QuotaRow(window)
-                            }
-                        } else {
-                            Text(
-                                text = "余额",
-                                style = TextStyle(fontSize = 13.sp),
-                                color = palette.labelSecondary,
-                            )
-                            Text(
-                                text = balanceText ?: "--",
-                                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
-                                color = palette.labelPrimary,
-                                modifier = Modifier.padding(top = 6.dp),
-                            )
-                        }
-                        if (expanded == UsageGlossary.BALANCE) GlossaryText(UsageGlossary.BALANCE)
-                    }
-                }
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                ExplainableLabel(stringResource(R.string.chat_estimated_cost), UsageGlossary.COST, expanded) { expanded = it }
+                Text(
+                    text = if (summary.costMicros == 0L) "--" else Money.format(summary.costMicros),
+                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
+                    color = palette.labelPrimary,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
             }
+            Column(Modifier.weight(1f)) {
+                ExplainableLabel(stringResource(R.string.chat_cache_hits), UsageGlossary.CACHE_HIT, expanded) { expanded = it }
+                Text(
+                    text = summary.cacheHitRate?.let { "%.1f%%".format(it * 100) } ?: "--",
+                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
+                    color = palette.labelPrimary,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        }
+        if (expanded == UsageGlossary.COST) GlossaryText(UsageGlossary.COST)
+        if (expanded == UsageGlossary.CACHE_HIT) GlossaryText(UsageGlossary.CACHE_HIT)
+
+        val hasData = !summary.isEmpty
+        MetricBlock(stringResource(R.string.chat_uncached_input), summary.usage.promptTokens, hasData)
+        MetricBlock(stringResource(R.string.chat_cache_reads), summary.usage.cacheHitTokens, hasData)
+        MetricBlock(stringResource(R.string.chat_output), summary.usage.completionTokens, hasData)
+
+        val hasAccount = quota != null || balanceText != null
+        if (hasAccount) {
+            Spacer(Modifier.height(20.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(palette.borderL2),
+            )
+            Spacer(Modifier.height(20.dp))
+
+            ExplainableLabel(stringResource(R.string.chat_account), UsageGlossary.BALANCE, expanded) { expanded = it }
+            Spacer(Modifier.height(12.dp))
+            if (quota != null) {
+                Text(
+                    text = stringResource(R.string.chat_subscription_quota),
+                    style = TextStyle(fontSize = 13.sp),
+                    color = palette.labelSecondary,
+                )
+                quota.windows.forEach { window ->
+                    QuotaRow(window)
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.chat_balance),
+                    style = TextStyle(fontSize = 13.sp),
+                    color = palette.labelSecondary,
+                )
+                Text(
+                    text = balanceText ?: "--",
+                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
+                    color = palette.labelPrimary,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            if (expanded == UsageGlossary.BALANCE) GlossaryText(UsageGlossary.BALANCE)
         }
     }
 }
@@ -385,7 +324,12 @@ private fun QuotaRow(window: QuotaWindow) {
     Column(Modifier.padding(top = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = window.label,
+                text = when (window.key) {
+                    "rolling" -> stringResource(R.string.chat_five_hours)
+                    "weekly" -> stringResource(R.string.chat_week)
+                    "monthly" -> stringResource(R.string.chat_month)
+                    else -> window.label
+                },
                 style = TextStyle(fontSize = 13.sp),
                 color = palette.labelSecondary,
                 modifier = Modifier.weight(1f),
@@ -422,20 +366,21 @@ private fun QuotaRow(window: QuotaWindow) {
 }
 
 /** 重置时间：只给相对说法（`3 小时后重置`），不暴露 ISO 串。单位为零时省略。 */
+@Composable
 private fun resetLabel(resetAt: String?): String? {
     if (resetAt.isNullOrBlank()) return null
     val instant = runCatching { java.time.Instant.parse(resetAt) }.getOrNull() ?: return null
     val minutes = java.time.Duration.between(java.time.Instant.now(), instant).toMinutes()
-    if (minutes <= 0) return "即将重置"
+    if (minutes <= 0) return stringResource(R.string.chat_resets_soon)
     val days = minutes / (24 * 60)
     val hours = minutes % (24 * 60) / 60
     val mins = minutes % 60
     return when {
-        days > 0 && hours > 0 -> "$days 天 $hours 小时后重置"
-        days > 0 -> "$days 天后重置"
-        hours > 0 && mins > 0 -> "$hours 小时 $mins 分钟后重置"
-        hours > 0 -> "$hours 小时后重置"
-        else -> "$mins 分钟后重置"
+        days > 0 && hours > 0 -> stringResource(R.string.chat_resets_in_d_h, days, hours)
+        days > 0 -> stringResource(R.string.chat_resets_in_d, days)
+        hours > 0 && mins > 0 -> stringResource(R.string.chat_resets_in_h_min, hours, mins)
+        hours > 0 -> stringResource(R.string.chat_resets_in_h, hours)
+        else -> stringResource(R.string.chat_resets_in_min, mins)
     }
 }
 

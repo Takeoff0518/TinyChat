@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="side_drawer_history">チャット履歴</string>
+    <string name="side_drawer_usage">使用量と料金</string>
+    <string name="side_drawer_close_history">チャット履歴を閉じる</string>
+    <string name="side_drawer_close_usage">使用量と料金を閉じる</string>
+    <string name="side_drawer_close">サイドバーを閉じる</string>
+</resources>

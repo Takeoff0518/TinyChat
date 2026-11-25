@@ -1,11 +1,17 @@
 package io.tinychat.net.account
 
+import io.tinychat.model.DiscoveredModel
+import io.tinychat.model.Provider
+import io.tinychat.net.protocol.ProviderModels
 import io.tinychat.net.transport.OkHttpChatTransport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -23,8 +29,11 @@ object AccountRequests {
     const val BALANCE_PATH = "/user/balance"
 
     fun get(baseUrl: String, path: String, apiKey: String): Request =
+        get(baseUrl.trimEnd('/') + path, apiKey)
+
+    internal fun get(url: String, apiKey: String): Request =
         Request.Builder()
-            .url(baseUrl.trimEnd('/') + path)
+            .url(url)
             .header("Authorization", "Bearer $apiKey")
             .get()
             .build()
@@ -68,30 +77,14 @@ class AccountClient(
     suspend fun checkKey(apiKey: String): KeyCheck = checkKey(AccountRequests.get(baseUrl, AccountRequests.MODELS_PATH, apiKey))
 
     /**
-     * 校验某个服务商的 Key（M8-6）：地址由调用方按协议算好（见 `ProviderModels`）。
+     * 校验某个服务商的 Key（M8-6）：地址与鉴权按服务商协议选择。
      * 只发 GET，不计费。
      */
-    suspend fun checkKey(url: String, apiKey: String): KeyCheck = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $apiKey")
-            .get()
-            .build()
-        try {
-            client.newCall(request).execute().use { response ->
-                when {
-                    response.isSuccessful -> KeyCheck.Ok
-                    response.code == 401 || response.code == 403 -> KeyCheck.Invalid
-                    response.code == 402 -> KeyCheck.Failed("账户余额不足，充值后即可继续")
-                    response.code == 429 -> KeyCheck.Failed("操作太频繁，稍后再试")
-                    response.code >= 500 -> KeyCheck.Failed("服务异常，请稍后再试")
-                    else -> KeyCheck.Failed("连接失败（${response.code}）")
-                }
-            }
-        } catch (e: IOException) {
-            KeyCheck.Failed("无法连接网络，请检查网络设置后重试")
-        }
-    }
+    suspend fun checkKey(provider: Provider, apiKey: String): KeyCheck =
+        checkKey(ProviderModels.keyCheckRequest(provider, apiKey))
+
+    suspend fun checkKey(url: String, apiKey: String): KeyCheck =
+        checkKey(AccountRequests.get(url, apiKey))
 
     private suspend fun checkKey(request: Request): KeyCheck = withContext(Dispatchers.IO) {
         try {
@@ -111,15 +104,19 @@ class AccountClient(
     }
 
     /**
-     * 拉模型目录（`GET …/models`）。返回模型 id 列表；401 抛 [AccountException] 带 401，
+     * 拉模型目录（`GET …/models`）。保留服务商提供的限制；401 抛 [AccountException] 带 401，
      * 让 UI 能区分「Key 无效」与「该地址没这个接口」。
      */
-    suspend fun modelIds(url: String, apiKey: String): List<String> = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $apiKey")
-            .get()
-            .build()
+    suspend fun models(provider: Provider, apiKey: String): List<DiscoveredModel> =
+        models(ProviderModels.listRequest(provider, apiKey))
+
+    suspend fun modelIds(provider: Provider, apiKey: String): List<String> =
+        models(provider, apiKey).map(DiscoveredModel::id)
+
+    suspend fun modelIds(url: String, apiKey: String): List<String> =
+        models(AccountRequests.get(url, apiKey)).map(DiscoveredModel::id)
+
+    private suspend fun models(request: Request): List<DiscoveredModel> = withContext(Dispatchers.IO) {
         try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
@@ -130,7 +127,7 @@ class AccountClient(
                     }
                     throw AccountException(message, response.code)
                 }
-                parseModelIds(response.body?.string().orEmpty())
+                parseModels(response.body?.string().orEmpty())
             }
         } catch (e: IOException) {
             throw AccountException("无法连接网络，请检查网络设置后重试", null)
@@ -180,15 +177,51 @@ class AccountClient(
         private fun JsonObject.string(key: String): String? =
             this[key]?.jsonPrimitive?.contentOrNull
 
-        /** 兼容 `{data:[{id}]}` 与 `{models:[{id}]}` 两种形状；只取 id，其余字段不需要。 */
-        fun parseModelIds(raw: String): List<String> {
-            val root = runCatching { json.parseToJsonElement(raw).jsonObject }.getOrNull()
+        fun parseModelIds(raw: String): List<String> = parseModels(raw).map(DiscoveredModel::id)
+
+        fun parseModels(raw: String): List<DiscoveredModel> {
+            val root = runCatching { json.parseToJsonElement(raw) }.getOrNull()
                 ?: throw AccountException("模型列表格式无法解析")
-            val array = root["data"]?.jsonArray ?: root["models"]?.jsonArray
-                ?: throw AccountException("当前接口地址未返回可用模型列表")
-            return array.mapNotNull { (it as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull }
-                .filter { it.isNotBlank() }
-                .distinct()
+            val array = when (root) {
+                is JsonArray -> root // Together returns the list at the top level.
+                is JsonObject -> (root["data"] as? JsonArray) ?: (root["models"] as? JsonArray)
+                else -> null
+            } ?: throw AccountException("当前接口地址未返回可用模型列表")
+
+            val models = linkedMapOf<String, DiscoveredModel>()
+            for (element in array) {
+                val model = element as? JsonObject ?: continue
+                val id = (model["id"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank) ?: continue
+                val limits = (model["limit"] as? JsonObject) ?: (model["limits"] as? JsonObject)
+                val topProvider = model["top_provider"] as? JsonObject
+                val modelInfo = model["model_info"] as? JsonObject
+                val previous = models[id]
+
+                // OpenCode publishes separate input and context limits. Use input as a fallback when the
+                // catalog only provides that value, as Anthropic does.
+                val contextWindow = previous?.contextWindow
+                    ?: model.tokens("context_length", "context_window", "contextWindow", "max_context_tokens", "max_model_len")
+                    ?: limits?.tokens("context")
+                    ?: topProvider?.tokens("context_length")
+                    ?: modelInfo?.tokens("context_length", "context_window")
+                    ?: model.tokens("max_input_tokens", "input_token_limit", "inputTokenLimit")
+                    ?: limits?.tokens("input")
+                    ?: modelInfo?.tokens("max_input_tokens")
+                val maxOutputTokens = previous?.maxOutputTokens
+                    ?: model.tokens("max_output_tokens", "max_completion_tokens", "maxOutputTokens", "outputTokenLimit", "output_token_limit")
+                    ?: limits?.tokens("output")
+                    ?: topProvider?.tokens("max_completion_tokens")
+                    ?: modelInfo?.tokens("max_output_tokens", "max_completion_tokens")
+                    ?: model.tokens("max_tokens")
+                    ?: modelInfo?.tokens("max_tokens")
+
+                models[id] = DiscoveredModel(id, contextWindow, maxOutputTokens)
+            }
+            return models.values.toList()
+        }
+
+        private fun JsonObject.tokens(vararg fields: String): Int? = fields.firstNotNullOfOrNull { field ->
+            (get(field) as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 }
         }
     }
 }

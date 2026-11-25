@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="markdown_collapse_code">Replier</string>
+    <string name="markdown_copied">Copié</string>
+    <string name="markdown_copy">Copier</string>
+    <string name="markdown_copy_code">Copier le code</string>
+    <string name="markdown_diagram_error">Impossible d’afficher le diagramme</string>
+    <string name="markdown_diagram_error_detail">Impossible d’afficher le diagramme (%s)</string>
+    <string name="markdown_expand_code">Développer le code (%d lignes)</string>
+    <string name="markdown_mermaid_diagram">Diagramme Mermaid</string>
+    <string name="markdown_render_failure">Échec de l’affichage</string>
+    <string name="markdown_render_timeout">Délai d’affichage dépassé</string>
+    <string name="markdown_rendering_diagram">Affichage du diagramme…</string>
+    <string name="markdown_rendering_math">Affichage de la formule…</string>
+    <string name="markdown_show_code">Afficher le code</string>
+    <string name="markdown_show_diagram">Afficher le diagramme</string>
+</resources>

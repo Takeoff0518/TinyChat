@@ -1,10 +1,12 @@
 package io.tinychat.net.transport
 
 import io.tinychat.model.ErrorKind
+import io.tinychat.model.ProviderKind
 import io.tinychat.net.SseEvent
 import io.tinychat.net.SseReader
 import io.tinychat.net.protocol.PreparedRequest
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import okhttp3.Call
@@ -15,6 +17,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -37,13 +40,19 @@ interface ChatTransport {
 /**
  * OkHttp 实现。
  *
- * - 超时按 02 §4.4：连接 15s、**读 120s**（深度思考搜索可能长时间无输出，靠 keep-alive 保活）；
+ * - 默认连接超时 15s、读取空闲超时 120s；OpenCode Go 读取空闲超时 300s，以容纳慢首字；
  * - 取消：协程结束时 `call.cancel()`，这就是 M1-7「停止生成」的落点；
  * - 不挂任何日志拦截器：请求头里有 `x-api-key`，R9 要求「不写日志」。
  */
 class OkHttpChatTransport(
     private val client: OkHttpClient = defaultClient(),
 ) : ChatTransport {
+    // 共用连接池和调度器，只放宽 OpenCode Go 等待响应头和流数据的时间。
+    private val openCodeClient by lazy {
+        client.newBuilder()
+            .readTimeout(maxOf(client.readTimeoutMillis.toLong(), OPENCODE_READ_TIMEOUT_MILLIS), TimeUnit.MILLISECONDS)
+            .build()
+    }
 
     override fun stream(request: PreparedRequest): Flow<SseEvent> = callbackFlow {
         val builder = Request.Builder()
@@ -52,11 +61,30 @@ class OkHttpChatTransport(
 
         request.headers.forEach { (name, value) -> builder.header(name, value) }
 
-        val call = client.newCall(builder.build())
+        val httpRequest = builder.build()
+        val url = httpRequest.url
+        val isOpenCodeEndpoint = url.host == "opencode.ai" &&
+            (url.encodedPath.startsWith("/inference/go/") || url.encodedPath.startsWith("/zen/"))
+        val requestClient = if (request.providerKind == ProviderKind.OPENCODE_GO || isOpenCodeEndpoint) {
+            openCodeClient
+        } else {
+            client
+        }
+        val call = requestClient.newCall(httpRequest)
 
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                close(ChatException(ErrorKind.NETWORK, message = e.message ?: "网络请求失败", cause = e))
+                // 超时和「连不上」得说清楚：以前两种都只透出 OkHttp 的英文 "timeout"，
+                // 用户只能猜是网络问题还是服务端不吐字。
+                val message = when (e) {
+                    is SocketTimeoutException -> "请求超时：连接或等待服务端响应超时"
+                    is java.net.UnknownHostException ->
+                        "域名解析失败，请检查网络或接口地址"
+                    is java.net.ConnectException ->
+                        "无法连接到服务器，请检查网络或接口地址"
+                    else -> e.message ?: "网络请求失败"
+                }
+                close(ChatException(ErrorKind.NETWORK, message = message, cause = e))
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -82,13 +110,18 @@ class OkHttpChatTransport(
 
                     try {
                         for (event in SseReader.read(source)) {
-                            if (isClosedForSend) break
-                            trySend(event)
+                            if (trySendBlocking(event).isFailure) break
                         }
                         close()
                     } catch (e: IOException) {
-                        // 读流中断：已收到的内容由上层保留，状态落 INCOMPLETE
-                        close(ChatException(ErrorKind.INTERRUPTED, resp.code, e.message ?: "流被中断", e))
+                        // 已经开始读流，报告读取超时，同时保留已经收到的内容。
+                        val message = if (e is SocketTimeoutException) {
+                            val seconds = TimeUnit.MILLISECONDS.toSeconds(requestClient.readTimeoutMillis.toLong())
+                            "请求超时：超过 $seconds 秒没有收到数据"
+                        } else {
+                            e.message ?: "流被中断"
+                        }
+                        close(ChatException(ErrorKind.INTERRUPTED, resp.code, message, e))
                     } catch (e: Exception) {
                         close(ChatException(ErrorKind.STREAM, resp.code, e.message ?: "流解析失败", e))
                     }
@@ -124,9 +157,12 @@ class OkHttpChatTransport(
     companion object {
         private val JSON = "application/json".toMediaType()
 
+        private const val READ_TIMEOUT_SECONDS = 120L
+        private const val OPENCODE_READ_TIMEOUT_MILLIS = 300_000L
+
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
             .build()
     }

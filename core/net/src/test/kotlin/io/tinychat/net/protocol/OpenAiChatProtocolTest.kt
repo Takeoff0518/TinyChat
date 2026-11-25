@@ -68,6 +68,7 @@ class OpenAiChatProtocolTest {
         assertEquals("https://x/v1/chat/completions", OpenAiChatProtocol.endpoint("https://x/v1"))
         assertEquals("https://x/v1/chat/completions", OpenAiChatProtocol.endpoint("https://x/v1/"))
         assertEquals("https://x/gw/v1/chat/completions", OpenAiChatProtocol.endpoint("https://x/gw"))
+        assertEquals("https://x/gw/v4/chat/completions", OpenAiChatProtocol.endpoint("https://x/gw/v4/"))
     }
 
     @Test
@@ -196,7 +197,7 @@ class OpenAiChatProtocolTest {
         assertTrue(marker.length <= 64)
         assertEquals(marker, ChatProtocols.extraHeaders(provider, "session-1")["x-opencode-session"])
         assertTrue(prepared.headers["User-Agent"]!!.startsWith("TinyChat/"))
-        assertEquals(ProviderKind.OPENCODE_GO, provider.kind)
+        assertEquals(ProviderKind.OPENCODE_GO, prepared.providerKind)
     }
 
     @Test

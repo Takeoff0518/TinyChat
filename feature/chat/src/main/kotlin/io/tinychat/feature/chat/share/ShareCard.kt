@@ -1,5 +1,7 @@
 package io.tinychat.feature.chat.share
 
+import androidx.compose.ui.res.stringResource
+import io.tinychat.feature.chat.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,7 +57,7 @@ fun ShareCard(
         Spacer(Modifier.height(14.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "内容由 AI 生成，请仔细甄别",
+                text = stringResource(R.string.chat_ai_generated_content_check_important_information),
                 fontSize = 12.sp,
                 color = Color(0xFF81858C),
                 modifier = Modifier.weight(1f),

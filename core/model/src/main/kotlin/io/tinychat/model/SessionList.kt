@@ -44,6 +44,7 @@ data class SessionSearchHit(
     val after: String,
     /** true = 命中在标题里（正文没有可展示的上下文行） */
     val matchedInTitle: Boolean = false,
+    val untitled: Boolean = false,
 ) {
     val snippet: String get() = before + match + after
 }
@@ -87,12 +88,14 @@ fun buildSearchHit(
     val start = (index - radius).coerceAtLeast(0)
     val end = (index + needle.length + radius).coerceAtMost(flat.length)
 
+    val normalizedTitle = title?.trim()?.takeIf { it.isNotEmpty() }
     return SessionSearchHit(
         sessionId = sessionId,
-        title = title?.trim()?.takeIf { it.isNotEmpty() } ?: "新对话",
+        title = normalizedTitle ?: "新对话",
         before = (if (start > 0) "…" else "") + flat.substring(start, index).trimStart(),
         match = flat.substring(index, index + needle.length),
         after = flat.substring(index + needle.length, end).trimEnd() + if (end < flat.length) "…" else "",
+        untitled = normalizedTitle == null,
     )
 }
 

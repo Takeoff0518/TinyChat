@@ -26,6 +26,9 @@ interface AttachmentDao {
     @Query("UPDATE attachments SET state = :state WHERE id = :id")
     suspend fun setState(id: String, state: AttachmentState)
 
+    @Query("UPDATE attachments SET state = :state WHERE id = :id AND message_id = :messageId")
+    suspend fun setStateForMessage(id: String, messageId: Long, state: AttachmentState)
+
     @Query("UPDATE attachments SET local_path = :localPath, state = :state WHERE id = :id")
     suspend fun setLocal(id: String, localPath: String?, state: AttachmentState)
 

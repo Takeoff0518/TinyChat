@@ -1,17 +1,32 @@
 package io.tinychat.data.settings
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import io.tinychat.model.KnownProviders
+import io.tinychat.model.ThinkingEffort
 import io.tinychat.model.TtsVoice
+import io.tinychat.model.WebSearchProvider
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** 设置库：整个 app 只有这一份，DataStore 不允许同一个文件建两个实例。 */
 private val Context.settingsDataStore by preferencesDataStore(name = "user_settings")
+
+data class ChatDefaults(
+    val providerId: String,
+    val modelId: String,
+    val effort: ThinkingEffort,
+    val thinkingEnabled: Boolean,
+    val searchEnabled: Boolean,
+)
 
 /**
  * 本地设置（M5 起用它，M8 的外观/字号也走这里）。
@@ -21,9 +36,8 @@ private val Context.settingsDataStore by preferencesDataStore(name = "user_setti
  *
  * ⚠️ 刻意**不**把 API Key 放这里：它单独一份加密 DataStore（`credentials`，M7-6）。
  */
-class UserSettings(context: Context) {
-
-    private val store = context.applicationContext.settingsDataStore
+class UserSettings internal constructor(private val store: DataStore<Preferences>) {
+    constructor(context: Context) : this(context.applicationContext.settingsDataStore)
 
     val autoSpeak: Flow<Boolean> = store.data.map { it[AUTO_SPEAK] ?: false }
 
@@ -62,6 +76,7 @@ class UserSettings(context: Context) {
 
     /** 用户常用语言，喂给 `{{language}}` 与 `latest_reminder` */
     val promptLanguage: Flow<String> = store.data.map { it[PROMPT_LANGUAGE] ?: "中文" }
+    val appLanguage: Flow<String> = store.data.map { it[APP_LANGUAGE] ?: "zh-CN" }
 
     /** 外观：`system` / `light` / `dark`（M8-4） */
     val themeMode: Flow<String> = store.data.map { it[THEME_MODE] ?: "system" }
@@ -72,6 +87,10 @@ class UserSettings(context: Context) {
     /** 当前服务商（M8-6）：新会话默认用它，由聊天页的模型选择器写入 */
     val activeProviderId: Flow<String> = store.data.map { it[ACTIVE_PROVIDER] ?: DEFAULT_PROVIDER_ID }
 
+    val webSearchProvider: Flow<WebSearchProvider> = store.data.map {
+        WebSearchProvider.fromWire(it[WEB_SEARCH_PROVIDER])
+    }
+
     /** 该服务商上次用的模型 id；没有就空串，由上层回落到目录第一个 */
     fun lastModel(providerId: String): Flow<String> =
         store.data.map { it[modelKey(providerId)] ?: "" }
@@ -80,8 +99,52 @@ class UserSettings(context: Context) {
         store.edit { it[ACTIVE_PROVIDER] = id }
     }
 
+    suspend fun setWebSearchProvider(provider: WebSearchProvider) {
+        store.edit { it[WEB_SEARCH_PROVIDER] = provider.wire }
+    }
+
     suspend fun setLastModel(providerId: String, model: String) {
         store.edit { it[modelKey(providerId)] = model }
+    }
+
+    /** 旧版仅在会话中记录思考和搜索；首次读取时迁到新对话的设置。 */
+    suspend fun loadChatDefaults(legacy: suspend () -> ChatDefaults? = { null }): ChatDefaults {
+        val current = store.data.first()
+        if (current.hasChatDefaults()) return current.chatDefaults()
+
+        val fromSession = legacy()
+        return store.edit { prefs ->
+            if (!prefs.hasChatDefaults()) prefs.writeChatDefaults(prefs.chatDefaults(fromSession))
+        }.chatDefaults()
+    }
+
+    suspend fun setChatDefaults(defaults: ChatDefaults) {
+        store.edit { it.writeChatDefaults(defaults) }
+    }
+
+    private fun Preferences.hasChatDefaults(): Boolean =
+        this[CHAT_EFFORT] != null && this[CHAT_THINKING] != null && this[CHAT_SEARCH] != null
+
+    private fun Preferences.chatDefaults(legacy: ChatDefaults? = null): ChatDefaults {
+        val providerId = this[ACTIVE_PROVIDER] ?: legacy?.providerId ?: DEFAULT_PROVIDER_ID
+        return ChatDefaults(
+            providerId = providerId,
+            modelId = this[modelKey(providerId)]?.takeIf { it.isNotBlank() }
+                ?: legacy?.takeIf { it.providerId == providerId }?.modelId
+                ?: if (providerId == DEFAULT_PROVIDER_ID) KnownProviders.flash.id else "",
+            effort = ThinkingEffort.entries.firstOrNull { it.wire == this[CHAT_EFFORT] }
+                ?: legacy?.effort ?: ThinkingEffort.LOW,
+            thinkingEnabled = this[CHAT_THINKING] ?: legacy?.thinkingEnabled ?: true,
+            searchEnabled = this[CHAT_SEARCH] ?: legacy?.searchEnabled ?: false,
+        )
+    }
+
+    private fun MutablePreferences.writeChatDefaults(defaults: ChatDefaults) {
+        this[ACTIVE_PROVIDER] = defaults.providerId
+        this[modelKey(defaults.providerId)] = defaults.modelId
+        this[CHAT_EFFORT] = defaults.effort.wire
+        this[CHAT_THINKING] = defaults.thinkingEnabled
+        this[CHAT_SEARCH] = defaults.searchEnabled
     }
 
     suspend fun setAutoSpeak(enabled: Boolean) {
@@ -130,6 +193,10 @@ class UserSettings(context: Context) {
         store.edit { it[THEME_MODE] = mode }
     }
 
+    suspend fun setAppLanguage(languageTag: String) {
+        store.edit { it[APP_LANGUAGE] = languageTag }
+    }
+
     suspend fun setFontScale(scale: Float) {
         store.edit { it[FONT_SCALE] = scale.coerceIn(0.9f, 1.3f) }
     }
@@ -146,8 +213,13 @@ class UserSettings(context: Context) {
         private val PROMPT_LOCATION = stringPreferencesKey("prompt_location")
         private val PROMPT_LANGUAGE = stringPreferencesKey("prompt_language")
         private val THEME_MODE = stringPreferencesKey("theme_mode")
+        private val APP_LANGUAGE = stringPreferencesKey("app_language")
         private val FONT_SCALE = floatPreferencesKey("font_scale")
         private val ACTIVE_PROVIDER = stringPreferencesKey("active_provider_id")
+        private val CHAT_EFFORT = stringPreferencesKey("chat_effort")
+        private val CHAT_THINKING = booleanPreferencesKey("chat_thinking_enabled")
+        private val CHAT_SEARCH = booleanPreferencesKey("chat_search_enabled")
+        private val WEB_SEARCH_PROVIDER = stringPreferencesKey("web_search_provider")
 
         private const val DEFAULT_PROVIDER_ID = "deepseek"
 

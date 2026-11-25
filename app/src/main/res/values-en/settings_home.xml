@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prefs_home_unconfigured">Not set up</string>
+    <string name="prefs_home_provider_count">Providers: %1$d</string>
+    <string name="prefs_home_official_prompt">Default prompt</string>
+    <string name="prefs_home_no_prompt">None</string>
+    <string name="prefs_home_crash">App crash</string>
+    <string name="prefs_home_chat">Chat</string>
+    <string name="prefs_home_diag">Diagnostics</string>
+</resources>

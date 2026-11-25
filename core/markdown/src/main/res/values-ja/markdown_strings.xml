@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="markdown_collapse_code">折りたたむ</string>
+    <string name="markdown_copied">コピーしました</string>
+    <string name="markdown_copy">コピー</string>
+    <string name="markdown_copy_code">コードをコピー</string>
+    <string name="markdown_diagram_error">図を表示できませんでした</string>
+    <string name="markdown_diagram_error_detail">図を表示できませんでした（%s）</string>
+    <string name="markdown_expand_code">コードを展開（%d 行）</string>
+    <string name="markdown_mermaid_diagram">Mermaid の図</string>
+    <string name="markdown_render_failure">表示に失敗しました</string>
+    <string name="markdown_render_timeout">表示がタイムアウトしました</string>
+    <string name="markdown_rendering_diagram">図を表示中…</string>
+    <string name="markdown_rendering_math">数式を表示中…</string>
+    <string name="markdown_show_code">コードを表示</string>
+    <string name="markdown_show_diagram">図を表示</string>
+</resources>

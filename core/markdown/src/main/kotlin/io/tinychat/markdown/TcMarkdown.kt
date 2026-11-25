@@ -1,4 +1,4 @@
-﻿package io.tinychat.markdown
+package io.tinychat.markdown
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -29,6 +30,18 @@ import org.intellij.markdown.ast.ASTNode
 private val TcBulletHandler = BulletHandler { _, _, _, _, _ -> "•" }
 
 /**
+ * 重建解析状态后要一次性补回的长度，落在安全的字符边界上。
+ *
+ * 目标位置如果正好把一个代理对劈成两半，退回一个 UTF-16 单元——半个 emoji
+ * 交给解析器会渲染成方块，而且下一帧又会被改写，看起来就是闪一下。
+ */
+private fun safePrefix(target: String, wanted: Int): Int {
+    val capped = wanted.coerceIn(0, target.length)
+    if (capped == 0 || capped == target.length) return capped
+    return if (target[capped - 1].isHighSurrogate()) capped - 1 else capped
+}
+
+/**
  * 助手正文的 Markdown 渲染（M2-1 / M2-2）。
  *
  * **硬性约定（docs/04 §3.4 实测结论，别改）**：
@@ -44,7 +57,7 @@ private val TcBulletHandler = BulletHandler { _, _, _, _, _ -> "•" }
  * 所以**所有消息（含已结束的）都走流式通道**，让内容经 StateFlow 错开一帧出现。
  *
  * @param content 到目前位置的全部正文（不是增量切片）。
- * @param streaming 还在流式输出中。结束时立刻把剩余内容补上，不再节流。
+ * @param streaming 仍在接收正文。完成后会快速显示剩余文字，历史消息直接渲染。
  */
 @Composable
 fun TcMarkdown(
@@ -52,9 +65,13 @@ fun TcMarkdown(
     modifier: Modifier = Modifier,
     streaming: Boolean = false,
     citations: List<CitationAnchor> = emptyList(),
+    /** 第三方搜索的结果条数：正文里的 `[k]`（k ≤ 这个数）会被渲染成角标 */
+    citedSources: Int = 0,
     onCitationClick: ((Int) -> Unit)? = null,
 ) {
     var generation by remember { mutableIntStateOf(0) }
+    var rebuildPrefix by remember { mutableIntStateOf(0) }
+    // 出字节奏跟着帧走：节流只按实测渲染耗时推迟，不设固定的最小间隔
     val merger = remember { FrameMerger() }
     // `\(…\)` → `$…$`：GFM 会把 `\(` 当成转义括号吃掉反斜杠，不归一的话模型给的
     // LaTeX 行内公式会被当普通文字渲染（真机上表现为「公式糊在正文里」）
@@ -77,21 +94,31 @@ fun TcMarkdown(
     // 只有真含行内代码时才启用圆角画笔：没有反引号的正文可以省掉
     // extend() / onTextLayout / drawBehind 这一整条链路
     val withInlineCode = remember(target) { target.contains('`') }
-    val inlineContent = citationInlineContent(anchoredCitations, onCitationClick)
+    val inlineContent = citationInlineContent(anchoredCitations, citedSources, onCitationClick)
 
     key(generation) {
         val state = rememberStreamingMarkdownState()
 
         LaunchedEffect(state, target, streaming) {
-            val appended = state.content.length
-            if (appended > target.length || !target.regionMatches(0, state.content, 0, appended)) {
-                // 正文被替换（比如重新生成得到更短的答案）：解析状态只能追加，只能重建
+            var cursor = state.content.length
+            // 重建之后第一次进：先把上一次已经显示的那一段原样补回去，
+            // 否则整篇会从头再长一遍（表现为闪一下）。
+            if (rebuildPrefix > 0) {
+                cursor = safePrefix(target, rebuildPrefix)
+                rebuildPrefix = 0
+                if (cursor > 0) state.append(target.substring(0, cursor))
+            }
+
+            if (cursor > target.length || !target.regionMatches(0, state.content, 0, cursor)) {
+                // Markdown 归一化有时会改写已显示的前缀。重建后直接恢复已显示的长度。
+                rebuildPrefix = cursor.coerceAtMost(target.length)
                 generation += 1
                 return@LaunchedEffect
             }
-            if (appended == target.length) return@LaunchedEffect
+            if (cursor == target.length) return@LaunchedEffect
 
-            var cursor = appended
+            // 逐帧追加：正文每帧都可能变长，这里只补「新到的那一段」，
+            // 节流靠实测渲染耗时（FrameMerger），不靠固定定时器。
             while (cursor < target.length) {
                 // 已结束的消息不节流：一次补完即可，没必要压着出
                 if (streaming) {
@@ -112,6 +139,7 @@ fun TcMarkdown(
             LocalBulletListHandler provides TcBulletHandler,
             LocalMarkdownStreaming provides streaming,
             LocalCitationAnchors provides anchoredCitations,
+            LocalCitationCount provides citedSources,
         ) {
             Markdown(
                 streamingMarkdownState = state,

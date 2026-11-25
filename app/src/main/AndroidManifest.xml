@@ -4,6 +4,9 @@
     <!-- 聊天必须联网；M0 不联网所以漏了，M1 真机联调时补上 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <!-- 语音输入（M5-1）：运行时权限，第一次进语音模式时申请 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
@@ -20,6 +23,7 @@
     <application
         android:name=".TinyChatApplication"
         android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"

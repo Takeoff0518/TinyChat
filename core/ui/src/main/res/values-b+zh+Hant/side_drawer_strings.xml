@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="side_drawer_history">對話清單</string>
+    <string name="side_drawer_usage">用量與費用</string>
+    <string name="side_drawer_close_history">關閉對話清單</string>
+    <string name="side_drawer_close_usage">關閉用量與費用</string>
+    <string name="side_drawer_close">關閉側欄</string>
+</resources>

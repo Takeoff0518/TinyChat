@@ -10,7 +10,7 @@
     <!-- 启动主题与日间同一份：只跟系统 SplashScreen 的背景色走 -->
     <style name="Theme.TinyChat.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/tc_window_bg</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/tc_splash_empty</item>
         <item name="postSplashScreenTheme">@style/Theme.TinyChat</item>
     </style>
 

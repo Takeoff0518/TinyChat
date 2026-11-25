@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sessions_multi_select">多选</string>
+    <string name="sessions_settings">设置</string>
+    <string name="sessions_remove_selected">删除后将从列表移除。</string>
+    <string name="sessions_delete">删除</string>
+    <string name="sessions_cancel">取消</string>
+    <string name="sessions_delete_chat">删除这个对话？</string>
+    <string name="sessions_remove_chat">「%1$s」将从列表移除。</string>
+    <string name="sessions_search">搜索对话内容…</string>
+    <string name="sessions_close_search">退出搜索</string>
+    <string name="sessions_clear_search">清空</string>
+    <string name="sessions_select_chats">选择对话</string>
+    <string name="sessions_close_selection">退出多选</string>
+    <string name="sessions_pin">置顶</string>
+    <string name="sessions_unpin">取消置顶</string>
+    <string name="sessions_empty">还没有对话</string>
+    <string name="sessions_rename">重命名</string>
+    <string name="sessions_chat_actions">会话操作</string>
+    <string name="sessions_no_results">没有找到相关对话</string>
+    <string name="sessions_rename_chat">重命名对话</string>
+    <string name="sessions_save">保存</string>
+    <string name="sessions_new_chat">新对话</string>
+    <string name="sessions_group_pinned">置顶</string>
+    <string name="sessions_group_today">今天</string>
+    <string name="sessions_group_yesterday">昨天</string>
+    <string name="sessions_group_week">7 天内</string>
+    <string name="sessions_group_month">30 天内</string>
+    <string name="sessions_group_earlier">更早</string>
+    <plurals name="sessions_delete_selected">
+        <item quantity="other">删除 %d 个对话？</item>
+    </plurals>
+</resources>

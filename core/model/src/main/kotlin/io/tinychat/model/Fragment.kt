@@ -1,4 +1,4 @@
-﻿package io.tinychat.model
+package io.tinychat.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -120,6 +120,12 @@ data class ToolSearchPayload(
     @SerialName("stage_id") val stageId: Int? = null,
     val queries: List<String> = emptyList(),
     val results: List<SearchResult> = emptyList(),
+    /**
+     * 失败原因（只有 status=FAILED 时可能有）：把底层异常的一句话说给用户听，
+     * 否则界面上永远只有「联网搜索暂不可用」，看诊无从下手。
+     * 旧库里的载荷没有这个字段，默认 null，兼容。
+     */
+    val reason: String? = null,
 ) : FragmentPayload {
     override val typeWire: String get() = FragmentType.TOOL_SEARCH.wire
 }

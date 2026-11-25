@@ -15,6 +15,7 @@ coreKtx = "1.19.1"
 splashscreen = "1.0.1"
 lifecycle = "2.11.0"
 navigation = "2.10.2"
+navigationEvent = "1.1.2"
 
 # —— 注解处理 / 持久化（KSP 已与 Kotlin 版本解耦，2.3.14 适配 Kotlin 2.4.x）——
 ksp = "2.3.14"
@@ -42,6 +43,7 @@ androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-
 androidx-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+androidx-navigationevent-compose = { module = "androidx.navigationevent:navigationevent-compose", version.ref = "navigationEvent" }
 
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-ui = { module = "androidx.compose.ui:ui" }

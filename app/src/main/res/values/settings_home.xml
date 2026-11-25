@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prefs_home_unconfigured">未配置</string>
+    <string name="prefs_home_provider_count">供应商：%1$d</string>
+    <string name="prefs_home_official_prompt">官方提示词</string>
+    <string name="prefs_home_no_prompt">不发送</string>
+    <string name="prefs_home_crash">应用崩溃</string>
+    <string name="prefs_home_chat">会话页</string>
+    <string name="prefs_home_diag">诊断信息</string>
+</resources>

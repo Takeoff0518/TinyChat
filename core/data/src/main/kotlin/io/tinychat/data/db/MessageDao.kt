@@ -52,6 +52,9 @@ interface MessageDao {
     @Query("UPDATE messages SET status = :status WHERE id = :id")
     suspend fun setStatus(id: Long, status: MessageStatus)
 
+    @Query("UPDATE messages SET status = 'INCOMPLETE' WHERE id = :id AND status = 'WIP'")
+    suspend fun markInterrupted(id: Long)
+
     /** 导入用：包内 id 先按顺序插成新行，再回来补父子关系 */
     @Query("UPDATE messages SET parent_id = :parentId WHERE id = :id")
     suspend fun setParent(id: Long, parentId: Long?)
@@ -67,6 +70,9 @@ interface MessageDao {
     /** 费用定格（决策 47）：落库时按当时价格与时段写好，之后不再随代码里的价目表漂移 */
     @Query("UPDATE messages SET cost_micros = :micros WHERE id = :id")
     suspend fun setCost(id: Long, micros: Long)
+
+    @Query("UPDATE messages SET context_summary = :summary, context_summary_tokens = :tokens WHERE id = :id")
+    suspend fun setContextSummary(id: Long, summary: String, tokens: Int)
 
     @Query("SELECT COALESCE(MAX(id), 0) FROM messages WHERE session_id = :sessionId")
     suspend fun maxIdInSession(sessionId: String): Long

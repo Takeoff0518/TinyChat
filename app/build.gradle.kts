@@ -19,17 +19,14 @@ android {
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        // 对外身份（2026-11-21 定）：装机、商店、升级都看它，一旦发出去就改不动。
-        // 代码里的命名空间仍是 io.tinychat（namespace 那行），两者本来就可以不同：
-        // 改命名空间要把所有模块的 package/import 全重排，收益只是好看，不做。
         applicationId = "top.tbpdt.tinychat"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        // 第一个正式版（M9-4）：1.0.0。以后每发一版 versionCode 必须 +1 —— 它只增不减，
-        // 减了系统就不让覆盖安装，只能卸载重装（数据一起没）。
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
+
+    androidResources.localeFilters += listOf("zh", "b+zh+Hant", "ja", "en", "ru", "fr", "es")
 
     signingConfigs {
         if (hasReleaseKey) {
@@ -117,6 +114,7 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.navigationevent.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     debugImplementation(libs.compose.ui.tooling)
