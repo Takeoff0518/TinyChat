@@ -61,17 +61,33 @@ internal fun InlineMathParagraph(
     val textColor = style.color.takeIf { it != androidx.compose.ui.graphics.Color.Unspecified }
         ?: palette.labelPrimary
     val screenPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }.toInt()
-    var images by remember(formulas, streaming) { mutableStateOf<Map<Int, InlineMathImage>?>(null) }
+    // 放大字号重排（见 InlineMathFontScale）：位图仍是 1:1 显示，不做位图缩放
+    val fontPx = remember(density, style.fontSize) {
+        (with(density) { style.fontSize.toPx() } * InlineMathFontScale).toInt().coerceAtLeast(10)
+    }
+    val dark = palette.bg.luminance() < 0.5f
+    // 位图渲染走 WebView 桥，异步而且贵；同段文字、同套样式的结果是确定的，
+    // 消息滚出屏幕再滚回来不该重渲一遍（P-045）。键里带上所有影响像素的输入。
+    val mathKey = remember(formulas, fontPx, screenPx, textColor, dark) {
+        buildString {
+            append(fontPx).append('|').append(screenPx)
+            append('|').append(textColor.toHex()).append('|').append(dark)
+            formulas.forEach { append('|').append(it.latex) }
+        }
+    }
+    var images by remember(mathKey, streaming) {
+        mutableStateOf(if (streaming) null else RenderCache.mathOrNull(mathKey))
+    }
 
-    LaunchedEffect(formulas, streaming) {
+    LaunchedEffect(mathKey, streaming) {
         if (streaming || formulas.isEmpty()) {
             images = null
             return@LaunchedEffect
         }
-        // 放大字号重排（见 InlineMathFontScale）：位图仍是 1:1 显示，不做位图缩放
-        val fontPx = (with(density) { style.fontSize.toPx() } * InlineMathFontScale)
-            .toInt()
-            .coerceAtLeast(10)
+        RenderCache.mathOrNull(mathKey)?.let {
+            images = it
+            return@LaunchedEffect
+        }
         val rendered = LinkedHashMap<Int, InlineMathImage>()
         formulas.forEachIndexed { index, formula ->
             val request = TcRenderHost.Request(
@@ -81,7 +97,7 @@ internal fun InlineMathParagraph(
                 fontPx = fontPx,
                 widthPx = screenPx.coerceAtLeast(1),
                 colorHex = textColor.toHex(),
-                dark = palette.bg.luminance() < 0.5f,
+                dark = dark,
             )
             val result = TcRenderHost.render(context, request)
             val bitmap = result.bitmap ?: run {
@@ -90,6 +106,7 @@ internal fun InlineMathParagraph(
             }
             rendered[index] = InlineMathImage(bitmap, result.widthPx, result.heightPx, result.baselinePx)
         }
+        RenderCache.putMath(mathKey, rendered)
         images = rendered
     }
 
