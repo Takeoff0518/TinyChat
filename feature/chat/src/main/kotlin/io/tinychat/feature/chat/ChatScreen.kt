@@ -866,6 +866,8 @@ private fun MessageRow(
 
     var selectOpen by remember { mutableStateOf(false) }
     var sourcesOpen by remember { mutableStateOf(false) }
+    // 点了正文里的角标：打开来源面板时把那一条高亮出来，省得自己找
+    var highlightedSource by remember { mutableStateOf<Int?>(null) }
     // 思维链里的工具行（搜索 / 浏览）：点开是抽屉，不是原位展开
     var toolSheet by remember(message.id) { mutableStateOf<ToolStep?>(null) }
     // 分享（M8-2）：抽屉 →（生成长图时）进度 → 预览 → 系统分享面板
@@ -923,7 +925,9 @@ private fun MessageRow(
                         content = bodyText,
                         streaming = isStreaming,
                         citations = message.anchors.map { CitationAnchor(it.anchor, it.index) },
-                        onCitationClick = { sourcesOpen = true },
+                        // 第三方搜索：正文里的 `[k]` 按来源条数换成角标
+                        citedSources = message.sources.size,
+                        onCitationClick = { index -> highlightedSource = index; sourcesOpen = true },
                     )
                     if (message.sources.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
@@ -1079,8 +1083,9 @@ private fun MessageRow(
     if (sourcesOpen) {
         SourceSheet(
             sources = message.sources,
+            highlighted = highlightedSource,
             sheetState = sourcesSheetState,
-            onDismiss = { sourcesOpen = false },
+            onDismiss = { sourcesOpen = false; highlightedSource = null },
         )
     }
 
@@ -1151,6 +1156,7 @@ private fun MessageRow(
 @Composable
 private fun SourceSheet(
     sources: List<ChatSource>,
+    highlighted: Int?,
     sheetState: androidx.compose.material3.SheetState,
     onDismiss: () -> Unit,
 ) {
@@ -1163,6 +1169,7 @@ private fun SourceSheet(
                 detail = source.snippet?.takeIf { it.isNotBlank() } ?: source.title,
                 index = source.index,
                 url = source.url,
+                highlighted = source.index == highlighted,
             )
         }
     }
@@ -1236,6 +1243,8 @@ private fun ResultRow(
     detail: String?,
     index: Int?,
     url: String?,
+    /** 从正文角标点进来的那一条：给一层浅底，便于一眼看到 */
+    highlighted: Boolean = false,
 ) {
     val palette = TcTheme.palette
     val uriHandler = LocalUriHandler.current
@@ -1243,6 +1252,7 @@ private fun ResultRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .background(if (highlighted) palette.brand.copy(alpha = 0.10f) else Color.Transparent)
             .clip(RoundedCornerShape(10.dp))
             .then(
                 if (url != null) {

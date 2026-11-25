@@ -65,6 +65,8 @@ fun TcMarkdown(
     modifier: Modifier = Modifier,
     streaming: Boolean = false,
     citations: List<CitationAnchor> = emptyList(),
+    /** 第三方搜索的结果条数：正文里的 `[k]`（k ≤ 这个数）会被渲染成角标 */
+    citedSources: Int = 0,
     onCitationClick: ((Int) -> Unit)? = null,
 ) {
     var generation by remember { mutableIntStateOf(0) }
@@ -92,7 +94,7 @@ fun TcMarkdown(
     // 只有真含行内代码时才启用圆角画笔：没有反引号的正文可以省掉
     // extend() / onTextLayout / drawBehind 这一整条链路
     val withInlineCode = remember(target) { target.contains('`') }
-    val inlineContent = citationInlineContent(anchoredCitations, onCitationClick)
+    val inlineContent = citationInlineContent(anchoredCitations, citedSources, onCitationClick)
 
     key(generation) {
         val state = rememberStreamingMarkdownState()
@@ -137,6 +139,7 @@ fun TcMarkdown(
             LocalBulletListHandler provides TcBulletHandler,
             LocalMarkdownStreaming provides streaming,
             LocalCitationAnchors provides anchoredCitations,
+            LocalCitationCount provides citedSources,
         ) {
             Markdown(
                 streamingMarkdownState = state,

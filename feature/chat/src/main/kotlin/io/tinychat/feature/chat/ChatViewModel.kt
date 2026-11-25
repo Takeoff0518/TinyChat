@@ -1756,10 +1756,16 @@ class ChatViewModel(
             ?.sum()
 
         // 「继续生成」靠 assistant 预填，必须有正文：思考阶段就被掐断的那种给「重新生成」；
-        // OpenAI 兼容链路没有 prefix 预填充，第三方会话不显示这个动作
+        // OpenAI 兼容链路没有 prefix 预填充，第三方会话不显示这个动作。
+        // 联网搜索要看是哪一种：客户端注入的搜索结果（Tavily / AnySearch，DeepSeek 原生也是
+        // 单独一次请求）只是上下文，不影响续写；只有 `stage_id` 非空的**服务端工具轮**才拦。
+        val serverToolRound = fragments.any { fragment ->
+            fragment.type.startsWith("TOOL_") &&
+                (FragmentPayloadCodec.decode(fragment.payload) as? ToolSearchPayload)?.stageId != null
+        }
         val canContinue = message.status == MessageStatus.INCOMPLETE &&
             state.currentProvider?.protocol != io.tinychat.model.ProviderProtocol.OPENAI_CHAT &&
-            timeline.none { it is TimelineItem.Tool } &&
+            !serverToolRound &&
             fragments.none { it.type == "TEMPLATE_RESPONSE" } &&
             text.isNotBlank()
 

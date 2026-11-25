@@ -163,8 +163,9 @@ private fun TcParagraph(model: MarkdownComponentModel) {
 
     val anchors = LocalCitationAnchors.current
     val mine = anchorsIn(anchors, model.node.startOffset, model.node.endOffset)
+    val citeCount = LocalCitationCount.current
     val settings = annotatorSettings()
-    val built = buildAnnotatedString {
+    val plainBuilt = buildAnnotatedString {
         pushStyle(model.typography.paragraph.toSpanStyle())
         buildMarkdownAnnotatedString(
             content = model.content,
@@ -172,7 +173,16 @@ private fun TcParagraph(model: MarkdownComponentModel) {
             annotatorSettings = settings,
         )
         pop()
-        mine.forEach { anchor -> appendInlineContent(CitationTagPrefix + anchor.index) }
+    }
+    // 第三方搜索：把模型写在正文里的 `[k]` 就地换成角标；原生搜索的锚点仍然贴在段尾
+    val numbered = plainBuilt.withNumberedCitations(citeCount)
+    val built = if (mine.isEmpty()) {
+        numbered
+    } else {
+        buildAnnotatedString {
+            append(numbered)
+            mine.forEach { anchor -> appendInlineContent(CitationTagPrefix + anchor.index) }
+        }
     }
     // 行内公式：流式中只吞 `$`（宽度稳定），消息结束后升级成 KaTeX 内联位图
     val formulas = remember(built) { findInlineMath(built.text) }
