@@ -2662,7 +2662,7 @@ private fun DraftChip(draft: DraftAttachment, enabled: Boolean, onRemove: () -> 
 }
 
 /**
- * 草稿里的文件卡片：文件名（超长省略）+「类型 · 大小」，与已发送消息里的那张卡一致。
+ * 草稿里的文件卡片：文件名（超长省略）+「类型 大小」，与已发送消息里的那张卡一致。
  *
  * 以前非图片只是个 56dp 方块里塞「图标 + 扩展名」，用户看不出自己到底选了哪个文件。
  */
@@ -2672,7 +2672,7 @@ private fun DraftFileSummary(draft: DraftAttachment, palette: TcPalette) {
     val meta = remember(draft.fileName, draft.size) {
         val type = draft.fileName.substringAfterLast('.', "").uppercase().take(4)
         val size = if (draft.size > 0) Formatter.formatShortFileSize(context, draft.size) else ""
-        listOf(type, size).filter { it.isNotEmpty() }.joinToString(" · ")
+        listOf(type, size).filter { it.isNotEmpty() }.joinToString(" ")
     }
     Row(
         modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
