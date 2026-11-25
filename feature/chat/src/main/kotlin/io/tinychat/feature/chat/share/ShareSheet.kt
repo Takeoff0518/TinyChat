@@ -24,6 +24,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,17 +50,19 @@ fun ShareSheet(
     onShareText: () -> Unit,
 ) {
     val palette = TcTheme.palette
+    // 抽屉是独立窗口，里面的 stringResource 按窗口自己的 Resources 解析，跟应用语言无关
+    val res = LocalResources.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = palette.bg,
     ) {
         Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
-            Text(stringResource(R.string.chat_share), style = TcTypography.titleMedium, color = palette.labelPrimary)
+            Text(res.getString(R.string.chat_share), style = TcTypography.titleMedium, color = palette.labelPrimary)
             Spacer(Modifier.height(10.dp))
-            ShareRow(stringResource(R.string.chat_create_image), null, onGenerateImage)
-            ShareRow(stringResource(R.string.chat_copy_text), null, onCopyText)
-            ShareRow(stringResource(R.string.chat_share_text), null, onShareText)
+            ShareRow(res.getString(R.string.chat_create_image), null, onGenerateImage)
+            ShareRow(res.getString(R.string.chat_copy_text), null, onCopyText)
+            ShareRow(res.getString(R.string.chat_share_text), null, onShareText)
         }
     }
 }
@@ -85,6 +88,7 @@ private fun ShareRow(title: String, subtitle: String?, onClick: () -> Unit) {
 @Composable
 fun ShareProgressDialog() {
     val palette = TcTheme.palette
+    val res = LocalResources.current
     TcAlertDialog(
         onDismissRequest = {},
         confirmButton = {},
@@ -92,7 +96,7 @@ fun ShareProgressDialog() {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(modifier = Modifier.size(26.dp), color = palette.brand)
                 Spacer(Modifier.height(12.dp))
-                Text(stringResource(R.string.chat_creating_image), style = TcTypography.bodyMedium, color = palette.labelPrimary)
+                Text(res.getString(R.string.chat_creating_image), style = TcTypography.bodyMedium, color = palette.labelPrimary)
             }
         },
     )
@@ -106,11 +110,12 @@ fun SharePreviewDialog(
     onDismiss: () -> Unit,
 ) {
     val palette = TcTheme.palette
+    val res = LocalResources.current
     TcAlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = if (output.pages > 1) stringResource(R.string.chat_share_image_count, output.pages) else stringResource(R.string.chat_share_image),
+                text = if (output.pages > 1) res.getString(R.string.chat_share_image_count, output.pages) else res.getString(R.string.chat_share_image),
                 style = TcTypography.titleMedium,
                 color = palette.labelPrimary,
             )
@@ -127,10 +132,10 @@ fun SharePreviewDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = onShare) { Text(stringResource(R.string.chat_share)) }
+            TextButton(onClick = onShare) { Text(res.getString(R.string.chat_share)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.chat_cancel), color = TcTheme.palette.labelSecondary) }
+            TextButton(onClick = onDismiss) { Text(res.getString(R.string.chat_cancel), color = TcTheme.palette.labelSecondary) }
         },
     )
 }

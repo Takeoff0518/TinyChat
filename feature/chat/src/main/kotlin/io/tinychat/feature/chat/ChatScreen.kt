@@ -1055,7 +1055,7 @@ private fun MessageRow(
         ) {
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(
-                    text = stringResource(R.string.chat_select_text),
+                    text = res.getString(R.string.chat_select_text),
                     style = TcTypography.titleMedium,
                     color = palette.labelPrimary,
                 )
