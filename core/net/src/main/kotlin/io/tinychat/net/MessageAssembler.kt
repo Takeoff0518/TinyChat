@@ -352,13 +352,16 @@ class MessageAssembler(
         thinkingSignature = buffer.toString()
     }
 
-    private fun onBlockStop(root: JsonObject) {        val index = root.int("index") ?: return
+    private fun onBlockStop(root: JsonObject) {
+        val index = root.int("index") ?: return
         val ord = slotByBlockIndex[index] ?: return
         val payload = slots[ord]?.payload as? ThinkPayload ?: return
         // 思维链耗时：起始到 stop 的墙钟差
         val startedAt = slots[ord]!!.startedAt
         val elapsed = (clock() - startedAt) / 1000.0
         fill(ord, payload.copy(elapsedSecs = elapsed))
+        // 界面靠这一项把标签从「正在思考」翻成「已思考（用时 N 秒）」，不用等落库
+        liveQueue += LiveDelta.ThinkStop(elapsed)
     }
 
     private fun onMessageDelta(root: JsonObject) {        val delta = root["delta"] as? JsonObject

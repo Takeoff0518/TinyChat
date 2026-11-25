@@ -17,6 +17,15 @@ sealed interface LiveDelta {
     /** 思考追加 */
     data class Think(val text: String) : LiveDelta
 
+    /**
+     * 这一段思考结束了（`content_block_stop`）。
+     *
+     * 界面要的不是「有没有实时快照」，而是「思考这会儿还在不在长」：标签从
+     * `正在思考` 翻成 `已思考（用时 N 秒）`、图标转灰、默认折叠，都以这一项为准。
+     * [elapsedSecs] 是协议侧记的耗时；OpenAI 兼容链路没有块边界，给 `null`。
+     */
+    data class ThinkStop(val elapsedSecs: Double? = null) : LiveDelta
+
     /** 正文追加 */
     data class Text(val text: String) : LiveDelta
 }

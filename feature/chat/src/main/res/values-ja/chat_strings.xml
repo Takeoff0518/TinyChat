@@ -32,6 +32,7 @@
     <string name="chat_continue">続きを生成</string>
     <string name="chat_copied">コピーしました</string>
     <string name="chat_copy">コピー</string>
+    <string name="chat_copy_reasoning">思考過程をコピー</string>
     <string name="chat_copy_text">テキストをコピー</string>
     <string name="chat_couldn_t_create_the_image_try_again">画像を作成できませんでした。もう一度お試しください。</string>
     <string name="chat_couldn_t_generate_a_response_try_again">回答を生成できませんでした。もう一度お試しください。</string>

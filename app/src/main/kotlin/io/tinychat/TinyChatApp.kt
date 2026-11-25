@@ -426,6 +426,8 @@ fun TinyChatApp() {
                         onSelectTtsVoice = chatViewModel::setTtsVoice,
                         showUsage = chatViewModel.state.showUsage,
                         onToggleShowUsage = chatViewModel::setShowUsage,
+                        thinkingAutoCollapse = chatViewModel.state.thinkingAutoCollapse,
+                        onToggleThinkingAutoCollapse = chatViewModel::setThinkingAutoCollapse,
                         reminderEnabled = chatViewModel.state.reminderEnabled,
                         onToggleReminder = chatViewModel::setReminderEnabled,
                         themeMode = themeMode,

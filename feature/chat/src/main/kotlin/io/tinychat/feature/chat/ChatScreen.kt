@@ -125,6 +125,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
@@ -134,6 +135,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
@@ -539,9 +541,11 @@ private fun MessageList(
     val clipboard = LocalClipboardManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
-    // 同一对话内滚动保留手动展开的条目，切换对话时清空选择。
+    // 同一对话内保留手动改过的展开态，切换对话时清空。
+    // 展开与否的**默认值**由 `thinkingBlockExpanded` 算：思考中默认展开，思考结束后按设置
+    // 收起（决策 80）。这里只记用户显式翻过哪几条，两个集合互斥。
     var expandedThinkingIds by rememberSaveable(sessionId) { mutableStateOf(longArrayOf()) }
-    var hiddenThinkingPreviewIds by rememberSaveable(sessionId) { mutableStateOf(longArrayOf()) }
+    var collapsedThinkingIds by rememberSaveable(sessionId) { mutableStateOf(longArrayOf()) }
 
     val imagePrompt = state.imagePromptSend
     val promptMessageId = imagePrompt?.messageId
@@ -628,6 +632,17 @@ private fun MessageList(
                     null
                 }
                 val shownText = snapshot?.text ?: message.text
+                // 这一段思考还在长吗（决策 80）：实时信号说「思考块停下了」，或者库里的
+                // 正文已经有内容，两者任一成立就不再算「正在思考」。
+                val thinkingActive = message.isThinking && (snapshot == null || !snapshot.thinkingDone)
+                // 用时优先用实时的：思考块停下那一帧就能写出来，不用等落库
+                val thinkingSeconds = snapshot?.thinkingSeconds ?: message.thinkingSeconds
+                val thinkingOverride = thinkingOverrideOf(expandedThinkingIds, collapsedThinkingIds, message.id)
+                val thinkingExpanded = thinkingBlockExpanded(
+                    active = thinkingActive,
+                    autoCollapse = state.thinkingAutoCollapse,
+                    override = thinkingOverride,
+                )
                 val isNewPrompt = message.id == promptMessageId
                 // The text row can reach the UI before its attachments finish saving.
                 // Use the existing draft previews to reserve the final row size on the first frame.
@@ -648,20 +663,23 @@ private fun MessageList(
                     streaming = isLatest && state.isStreaming,
                     liveText = snapshot?.text,
                     liveThinking = snapshot?.thinking,
-                    thinkingExpanded = if (message.isThinking) {
-                        message.id !in hiddenThinkingPreviewIds
-                    } else {
-                        message.id in expandedThinkingIds
-                    },
+                    thinkingActive = thinkingActive,
+                    thinkingSeconds = thinkingSeconds,
+                    thinkingAutoCollapse = state.thinkingAutoCollapse,
+                    thinkingExpanded = thinkingExpanded,
                     onToggleThinking = {
-                        if (message.isThinking) {
-                            hiddenThinkingPreviewIds = hiddenThinkingPreviewIds.toggle(message.id)
+                        // 用户翻过一次就记下来，之后不再跟默认值走（会话内有效）
+                        if (thinkingExpanded) {
+                            expandedThinkingIds = expandedThinkingIds.without(message.id)
+                            collapsedThinkingIds = collapsedThinkingIds.toggle(message.id)
                         } else {
+                            collapsedThinkingIds = collapsedThinkingIds.without(message.id)
                             expandedThinkingIds = expandedThinkingIds.toggle(message.id)
                         }
                     },
                     onTap = { onEditMessage(message) },
                     onCopyMessage = { clipboard.setText(AnnotatedString(shownText)) },
+                    onCopyThinking = { text -> clipboard.setText(AnnotatedString(text)) },
                     onSwitchVersion = { delta -> onSwitchVersion(message.id, delta) },
                     onRegenerate = if (!message.isUser && isLatest) ({ onRegenerate(message) }) else null,
                     onContinue = if (!message.isUser && isLatest && message.canContinue) ({ onContinue(message) }) else null,
@@ -720,10 +738,14 @@ private fun MessageList(
  */
 private fun List<TimelineItem>.withLiveThinking(thinking: String?): List<TimelineItem> {
     if (thinking.isNullOrBlank()) return this
-    return if (lastOrNull() is TimelineItem.Text) {
-        dropLast(1) + TimelineItem.Text(thinking)
-    } else {
-        this + TimelineItem.Text(thinking)
+    val last = lastOrNull() as? TimelineItem.Text
+    return when {
+        // 没有任何已落库的思考：实时这段就是第一段
+        last == null -> this + TimelineItem.Text(thinking)
+        // 同一段还在长：库里那条只是它的前缀，原地替换，前面的段落不能被顶掉
+        thinking.startsWith(last.content) -> dropLast(1) + TimelineItem.Text(thinking)
+        // 第二轮「思考—搜索—再思考」：实时这段是新的一段，接在后面
+        else -> this + TimelineItem.Text(thinking)
     }
 }
 
@@ -738,10 +760,18 @@ private fun MessageRow(
     liveText: String? = null,
     /** 非空 = 正在长出来的思考，贴到时间轴末尾 */
     liveThinking: String? = null,
+    /** 这一段思考还在长（决策 80）：标签、图标、默认折叠都看它 */
+    thinkingActive: Boolean = false,
+    /** 这一段思考的用时，优先取实时的（思考块停下那一帧就能写出来） */
+    thinkingSeconds: Double? = null,
+    /** 关掉之后思维链一律平铺，不再自动收起（决策 80） */
+    thinkingAutoCollapse: Boolean = true,
     thinkingExpanded: Boolean,
     onToggleThinking: () -> Unit,
     onTap: () -> Unit,
     onCopyMessage: () -> Unit,
+    /** 复制这一条的思维链（决策 80） */
+    onCopyThinking: (String) -> Unit = {},
     onSwitchVersion: (Int) -> Unit,
     onRegenerate: (() -> Unit)?,
     onContinue: (() -> Unit)?,
@@ -757,6 +787,11 @@ private fun MessageRow(
     val haptics = LocalHapticFeedback.current
     // 实时出字时用内存快照里的正文（继续生成时已经接上了原有内容），否则用库里的
     val bodyText = liveText ?: message.text
+    // 正在长出来的思考贴到时间轴末尾；思维链本身与菜单里的「复制思考过程」共用这一份
+    val liveTimeline = remember(message.timeline, liveThinking) {
+        message.timeline.withLiveThinking(liveThinking)
+    }
+    val thinkingText = remember(liveTimeline) { liveTimeline.thinkingPreviewText() }
 
     // 长按菜单（决策 44）：记下按下的位置与所在节点的坐标，菜单出现在手指正上方。
     // 用户消息与 AI 消息各占一个分支，同一时刻只有一个节点在写这两个值。
@@ -903,13 +938,14 @@ private fun MessageRow(
                     .tcPressPosition { pressPos = it }
                     .combinedClickable(onClick = {}, onLongClick = { openMenuAtPress() }),
             ) {
-                val liveTimeline = message.timeline.withLiveThinking(liveThinking)
-                if (message.hasThinking || message.isThinking || liveThinking != null) {
+                // 空串不算「有思考」：思考关掉的会话不该挂一行「正在思考」（决策 80）
+                if (message.hasThinking || message.isThinking || liveThinking?.isNotEmpty() == true) {
                     ThinkingBlock(
                         timeline = liveTimeline,
-                        seconds = message.thinkingSeconds,
-                        inProgress = message.isThinking || liveThinking != null,
+                        seconds = thinkingSeconds ?: message.thinkingSeconds,
+                        active = thinkingActive,
                         streaming = streaming,
+                        autoCollapse = thinkingAutoCollapse,
                         expanded = thinkingExpanded,
                         onToggle = onToggleThinking,
                         stopped = message.status == MessageStatus.INCOMPLETE && bodyText.isBlank(),
@@ -1037,16 +1073,29 @@ private fun MessageRow(
                 visible = menuOpen,
                 anchor = anchor,
                 onDismiss = { menuOpen = false },
-                items = listOf(
-                    TcMenuItem(stringResource(R.string.chat_copy)) {
-                        menuOpen = false
-                        onCopyMessage()
-                    },
-                    TcMenuItem(stringResource(R.string.chat_select_text)) {
-                        menuOpen = false
-                        selectOpen = true
-                    },
-                ),
+                items = buildList {
+                    add(
+                        TcMenuItem(stringResource(R.string.chat_copy)) {
+                            menuOpen = false
+                            onCopyMessage()
+                        },
+                    )
+                    // 思维链也让人拿得走（决策 80）：平铺模式下会想整段摘出去
+                    if (thinkingText.isNotBlank()) {
+                        add(
+                            TcMenuItem(stringResource(R.string.chat_copy_reasoning)) {
+                                menuOpen = false
+                                onCopyThinking(thinkingText)
+                            },
+                        )
+                    }
+                    add(
+                        TcMenuItem(stringResource(R.string.chat_select_text)) {
+                            menuOpen = false
+                            selectOpen = true
+                        },
+                    )
+                },
             )
         }
     }
@@ -1623,13 +1672,20 @@ private fun VersionSwitcher(index: Int, count: Int, onSwitch: (Int) -> Unit) {
 /**
  * 思维链折叠块（§13）：折叠 `已思考（用时 N 秒）›`；展开为左侧竖线 + 圆点时间轴，
  * 中间穿插工具步骤卡片。
+ *
+ * 两个渲染分支（决策 80）：
+ * - **思考中且开着「自动折叠」**：六行滚动窗口，边想边往上滚，就是现在这个样子；
+ * - **其余情况一律平铺完整记录**：关掉自动折叠之后，思考中也是逐字平铺；
+ *   思考结束之后不论是点开的还是本来就展开的，都是完整记录，**不再经过预览渲染器**
+ *   （以前点开重放一遍，就是因为结束之后还在走第一条分支）。
  */
 @Composable
 private fun ThinkingBlock(
     timeline: List<TimelineItem>,
     seconds: Double?,
-    inProgress: Boolean,
+    active: Boolean,
     streaming: Boolean,
+    autoCollapse: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
     stopped: Boolean,
@@ -1638,7 +1694,7 @@ private fun ThinkingBlock(
     val palette = TcTheme.palette
 
     val label = when {
-        inProgress -> stringResource(R.string.chat_thinking)
+        active -> stringResource(R.string.chat_thinking)
         // 思考阶段被掐断：不假装「已思考完」，直接标已停止
         stopped -> stringResource(R.string.chat_stopped)
         else -> {
@@ -1655,7 +1711,7 @@ private fun ThinkingBlock(
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ThinkingIcon(inProgress)
+            ThinkingIcon(active)
             Spacer(Modifier.width(6.dp))
             // 文案切换（正在思考 → 已思考（用时 N 秒））用淡入淡出，别硬跳
             Crossfade(
@@ -1682,13 +1738,14 @@ private fun ThinkingBlock(
             )
         }
 
-        var showPreview by remember { mutableStateOf(inProgress) }
-        // 思考一结束就开始收起预览。等用户主动展开时，再换成完整记录。
-        LaunchedEffect(inProgress, expanded) {
-            if (inProgress || expanded) showPreview = inProgress
+        // 滚动窗口只在「思考中 + 自动折叠」时用；游标提到块这一级，
+        // 收起再点开、或者从平铺切回来，都不会把看过的内容再吐一遍
+        val windowed = active && autoCollapse
+        val previewText = remember(timeline, windowed) {
+            if (windowed) timeline.thinkingPreviewText() else ""
         }
-        val previewText = if (inProgress || showPreview) remember(timeline) { timeline.thinkingPreviewText() } else null
-        val previewEnd = previewText?.let { rememberThinkingPreviewEnd(it, inProgress, streaming) }
+        val previewEnd = rememberSaveable { mutableIntStateOf(0) }
+        rememberThinkingCursor(previewEnd, previewText, visible = windowed && expanded, streaming)
         AnimatedVisibility(
             visible = expanded,
             enter = expandVertically(
@@ -1712,7 +1769,7 @@ private fun ThinkingBlock(
                     .padding(start = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (showPreview && previewText != null && previewEnd != null) {
+                if (windowed) {
                     val lastTool = timeline.lastOrNull { it is TimelineItem.Tool } as? TimelineItem.Tool
                     lastTool?.let { ToolCard(it.step, onOpenTool) }
                     ThinkingPreview(previewText, previewEnd)
@@ -1729,32 +1786,85 @@ private fun ThinkingBlock(
     }
 }
 
+/**
+ * 这一条的展开态是谁定的：`null` = 没手动改过，跟默认值走（决策 80）。
+ *
+ * 两个集合互斥，同一条消息只会出现在一边。
+ */
+internal fun thinkingOverrideOf(opened: LongArray, closed: LongArray, id: Long): Boolean? = when {
+    id in opened -> true
+    id in closed -> false
+    else -> null
+}
+
+/**
+ * 思维链展开与否（决策 80）。
+ *
+ * 默认值：思考中展开（官方就是边想边给你看），思考结束后按设置收起；
+ * 关掉「思考内容自动折叠」之后默认永远展开。用户点过就以他点的为准。
+ */
+internal fun thinkingBlockExpanded(active: Boolean, autoCollapse: Boolean, override: Boolean?): Boolean = when {
+    override != null -> override
+    else -> active || !autoCollapse
+}
+
 private fun LongArray.toggle(id: Long): LongArray =
     if (id in this) filterNot { it == id }.toLongArray() else this + id
 
-/** 时间轴上的一段思考：每行一个圆点 */
+private fun LongArray.without(id: Long): LongArray =
+    if (id in this) filterNot { it == id }.toLongArray() else this
+
+/**
+ * 时间轴上的一段思考：**整段一次排版**，圆点在左侧栏里画出来（每段一个）。
+ *
+ * 以前是「一行一个 Row + 一个 Text」：四十行的思维链就是四十个文本节点，滚进屏幕要排
+ * 四十次，真机实测滚动时 26% 的帧超时、UI 线程慢帧 163 次。改成整段一个文本节点之后，
+ * 只剩一次文本布局，圆点改走绘制，滚动不再按行建节点。
+ */
 @Composable
 private fun TimelineText(content: String) {
     val palette = TcTheme.palette
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        content.split('\n').filter { it.isNotBlank() }.forEach { line ->
-            Row {
-                Box(
-                    modifier = Modifier
-                        .padding(top = 7.dp)
-                        .size(4.dp)
-                        .background(palette.labelTertiary, CircleShape),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = line.trim(),
-                    style = TcTypography.bodyMedium,
-                    color = palette.labelSecondary,
-                )
-            }
-        }
+    val paragraphs = remember(content) { content.thinkingParagraphs() }
+    if (paragraphs.isEmpty()) return
+    val text = remember(paragraphs) { paragraphs.joinToString("\n") }
+    // 每个段落首行要画点：记下它在整段文本里的偏移
+    val starts = remember(paragraphs) {
+        var offset = 0
+        paragraphs.map { line -> offset.also { offset += line.length + 1 } }
     }
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val density = LocalDensity.current
+    val dotRadius = with(density) { 2.dp.toPx() }
+    val dotOffsetY = with(density) { 9.dp.toPx() }
+    // 行高原本靠 4dp 的行间距撑开，合成一段之后加进行高里，视觉间隙不变
+    val style = remember(density) {
+        val extraSp = 4f / density.fontScale
+        TcTypography.bodyMedium.copy(lineHeight = (TcTypography.bodyMedium.lineHeight.value + extraSp).sp)
+    }
+    Text(
+        text = text,
+        style = style,
+        color = palette.labelSecondary,
+        modifier = Modifier
+            .drawBehind {
+                val result = layout ?: return@drawBehind
+                for (start in starts) {
+                    val top = result.getLineTop(result.getLineForOffset(start))
+                    drawCircle(
+                        color = palette.labelTertiary,
+                        radius = dotRadius,
+                        center = Offset(dotRadius, top + dotOffsetY),
+                    )
+                }
+            }
+            .padding(start = 12.dp),
+        onTextLayout = { if (layout !== it) layout = it },
+    )
 }
+
+/** 思考文本的段落（非空行，逐行去掉首尾空白）；圆点就按这个粒度画。 */
+internal fun String.thinkingParagraphs(): List<String> =
+    split('\n').map { it.trim() }.filter { it.isNotEmpty() }
 
 /**
  * 工具步骤行：`搜索到 N 个网页` / `已浏览 N 个页面` + 站点图标堆叠 + `›`。

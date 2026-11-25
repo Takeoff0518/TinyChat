@@ -247,8 +247,38 @@ class ChatStreamRunnerTest {
     }
 
     @Test
-    fun `继续生成的实时快照把已有正文接在前面`() = runBlocking {
+    fun `思考块停下那一帧就报已完成，并带上用时`() = runBlocking {
         val id = newAssistantMessage()
+        val snapshots = mutableListOf<LiveStream>()
+        // 每次读表都往前走一秒：思考块的墙钟耗时一定大于 0
+        var clock = now
+        val advancing = ChatStreamRunner(
+            messageDao = db.messageDao(),
+            fragmentDao = db.fragmentDao(),
+            clock = { clock += 1_000; clock },
+            flushIntervalMillis = 0,
+            liveIntervalMillis = 0,
+            sleep = {},
+        )
+        advancing.run(
+            assistantMessageId = id,
+            request = request(),
+            transport = FakeTransport(sse(SEARCH_STREAM)),
+            onLive = { snapshots += it },
+        )
+
+        val thinking = snapshots.filter { it.thinking.isNotEmpty() }
+        assertTrue("思考阶段要有快照", thinking.isNotEmpty())
+        // 正在长的那几帧：标签该写「正在思考」，用时还没出来
+        assertTrue("思考增量那几帧不能报已完成", thinking.any { !it.thinkingDone })
+        assertTrue("落库前用时只能是空的", thinking.first().thinkingSeconds == null)
+        // 思考块一停就报完成：标签和用时都不用等 500ms 的落库
+        assertTrue("收尾帧必须报已完成", snapshots.last().thinkingDone)
+        assertTrue("收尾帧要带用时", (snapshots.last().thinkingSeconds ?: 0.0) > 0.0)
+    }
+
+    @Test
+    fun `继续生成的实时快照把已有正文接在前面`() = runBlocking {        val id = newAssistantMessage()
         val snapshots = mutableListOf<LiveStream>()
         runner().run(
             assistantMessageId = id,

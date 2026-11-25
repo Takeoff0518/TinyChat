@@ -13,6 +13,7 @@
     <string name="prefs_home_font">Размер текста</string>
     <string name="prefs_home_prompt">Промпты</string>
     <string name="prefs_home_metadata">Контекст пользователя</string>
+    <string name="prefs_home_thinking_collapse">Автоматически сворачивать рассуждение</string>
     <string name="prefs_home_usage">Расход для каждого ответа</string>
     <string name="prefs_home_voice">Голос</string>
     <string name="prefs_home_read_voice">Голос озвучивания</string>

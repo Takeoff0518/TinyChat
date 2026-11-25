@@ -13,6 +13,7 @@
     <string name="prefs_home_font">文字サイズ</string>
     <string name="prefs_home_prompt">プロンプト</string>
     <string name="prefs_home_metadata">ユーザー情報</string>
+    <string name="prefs_home_thinking_collapse">思考内容を自動で折りたたむ</string>
     <string name="prefs_home_usage">回答ごとに使用量を表示</string>
     <string name="prefs_home_voice">音声</string>
     <string name="prefs_home_read_voice">読み上げの声</string>

@@ -13,6 +13,7 @@
     <string name="prefs_home_font">字型大小</string>
     <string name="prefs_home_prompt">提示詞</string>
     <string name="prefs_home_metadata">使用者資訊</string>
+    <string name="prefs_home_thinking_collapse">思考內容自動收起</string>
     <string name="prefs_home_usage">顯示每輪用量</string>
     <string name="prefs_home_voice">語音</string>
     <string name="prefs_home_read_voice">朗讀音色</string>

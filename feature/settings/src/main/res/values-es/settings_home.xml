@@ -13,6 +13,7 @@
     <string name="prefs_home_font">Tamaño del texto</string>
     <string name="prefs_home_prompt">Instrucciones</string>
     <string name="prefs_home_metadata">Contexto del usuario</string>
+    <string name="prefs_home_thinking_collapse">Contraer el razonamiento automáticamente</string>
     <string name="prefs_home_usage">Mostrar consumo por respuesta</string>
     <string name="prefs_home_voice">Voz</string>
     <string name="prefs_home_read_voice">Voz de lectura</string>

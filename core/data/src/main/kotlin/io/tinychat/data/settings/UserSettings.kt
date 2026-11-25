@@ -50,6 +50,13 @@ class UserSettings internal constructor(private val store: DataStore<Preferences
     val reminderEnabled: Flow<Boolean> = store.data.map { it[REMINDER] ?: true }
 
     /**
+     * 思维链在思考结束后自动收起（决策 80）；**默认开**，与官方一致。
+     *
+     * 关掉之后思维链一直平铺在回答上方，历史上的消息进会话也是展开的。
+     */
+    val thinkingAutoCollapse: Flow<Boolean> = store.data.map { it[THINKING_AUTO_COLLAPSE] ?: true }
+
+    /**
      * 当前选中的系统提示词预设（决策 45）。**null = 不使用自定义内容**。
      * 旧版本这个键存的是内置 id（`default` / `none` / …），迁移时会被改写或清掉。
      */
@@ -163,6 +170,10 @@ class UserSettings internal constructor(private val store: DataStore<Preferences
         store.edit { it[REMINDER] = enabled }
     }
 
+    suspend fun setThinkingAutoCollapse(enabled: Boolean) {
+        store.edit { it[THINKING_AUTO_COLLAPSE] = enabled }
+    }
+
     suspend fun setPromptSelectedId(id: String?) {
         store.edit { prefs ->
             if (id == null) prefs.remove(PROMPT_PRESET) else prefs[PROMPT_PRESET] = id
@@ -206,6 +217,7 @@ class UserSettings internal constructor(private val store: DataStore<Preferences
         private val TTS_VOICE = stringPreferencesKey("tts_voice")
         private val SHOW_USAGE = booleanPreferencesKey("show_usage")
         private val REMINDER = booleanPreferencesKey("reminder_enabled")
+        private val THINKING_AUTO_COLLAPSE = booleanPreferencesKey("thinking_auto_collapse")
         private val PROMPT_PRESET = stringPreferencesKey("prompt_preset_id")
         private val PROMPT_INCLUDE_OFFICIAL = booleanPreferencesKey("prompt_include_official")
         private val PROMPT_MIGRATED = booleanPreferencesKey("prompt_migrated_v2")

@@ -101,6 +101,9 @@ class OpenAiStreamAssembler : StreamAssembler {
 
     override fun usedServerTools(): Boolean = false
 
+    /** 这一段思考是否已经报过「结束」；正文一动就报，思考又来了就复位 */
+    private var thinkingStopped = false
+
     private fun appendThink(text: String) {
         if (text.isEmpty()) return
         val builder = think ?: StringBuilder().also {
@@ -109,6 +112,7 @@ class OpenAiStreamAssembler : StreamAssembler {
             liveQueue += LiveDelta.ThinkStart
         }
         builder.append(text)
+        thinkingStopped = false
         liveQueue += LiveDelta.Think(text)
     }
 
@@ -117,6 +121,12 @@ class OpenAiStreamAssembler : StreamAssembler {
         val builder = response ?: StringBuilder().also {
             response = it
             responseOrd = nextOrd++
+        }
+        // OpenAI 兼容链路没有 content_block_stop：正文一动就说明这一段思考写完了。
+        // 真到了收尾还没正文（只剩思考）时由上层按「思考里的正文为空」兜住。
+        if (think != null && !thinkingStopped) {
+            thinkingStopped = true
+            liveQueue += LiveDelta.ThinkStop()
         }
         builder.append(text)
         liveQueue += LiveDelta.Text(text)

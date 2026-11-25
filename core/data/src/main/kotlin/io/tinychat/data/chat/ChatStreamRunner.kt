@@ -38,11 +38,21 @@ data class RunOutcome(
  * [text] 是这一轮到目前为止的**完整正文**（继续生成时把这条消息原有的内容接在前面），
  * [thinking] 是当前这段思考的全文。给快照而不是增量：界面拿一次就能直接渲染，
  * 不必自己维护拼接状态，也不怕和落库的形态对不上。
+ *
+ * [thinkingDone] 是「这一段思考写完了没有」。界面靠它决定标签写 `正在思考` 还是
+ * `已思考（用时 N 秒）`、图标是不是还在呼吸、以及默认要不要收起。**默认 true**：
+ * 没开思考的会话不该凭空冒出一行「正在思考」。`ThinkStart` 置回 false，
+ * `ThinkStop` 置 true。
+ *
+ * [thinkingSeconds] 是到目前为止的思考耗时（多轮「思考、搜索、再思考」时累加），
+ * 有它才能在思考块停下的那一帧就把用时写出来，不用等 500ms 的落库。
  */
 data class LiveStream(
     val messageId: Long,
     val thinking: String,
     val text: String,
+    val thinkingDone: Boolean = true,
+    val thinkingSeconds: Double? = null,
 )
 
 /** 实时快照的接收端。传 `null` 表示这一轮不要实时预览（单测这类场景）。 */
@@ -65,7 +75,15 @@ class ChatStreamRunner(
     private val fragmentDao: FragmentDao,
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val flushIntervalMillis: Long = 500,
-    /** 实时快照的最小间隔；界面按帧取，比这更密的更新本来就画不出来 */
+    /**
+     * 实时快照的最小间隔：跟屏幕刷新走（决策 74）。
+     *
+     * 曾经在思考阶段单独放到 45ms，理由是「每来一帧都要把整段思维链重排一次」。那个理由
+     * 建立在 **debug 包** 的实测上（平铺 41% / 收起 25%，用的还是 120Hz 下按 8.3ms 算的
+     * `Janky frames (legacy)`）；换成 release 包、改看 `Frame deadline missed` 之后，两种
+     * 模式都在 4% 上下、95 分位 12–13ms，看不出要降频的理由，于是撤回。
+     * 以后量手感一律用 release（或 benchmark）包，别看 legacy 那一行。
+     */
     private val liveIntervalMillis: Long = 16,
     /** 重试退避；测试传空实现，免得单测真等 1s */
     private val sleep: suspend (Long) -> Unit = { delay(it) },
@@ -93,6 +111,9 @@ class ChatStreamRunner(
         val liveText = StringBuilder(baseText)
         val liveThink = StringBuilder()
         var lastLiveAt = Long.MIN_VALUE / 2
+        // 这一段思考写完没有、到目前为止想了多久（决策 80）
+        var liveThinkingDone = true
+        var liveThinkingSeconds = 0.0
 
         fun publishLive(force: Boolean = false) {
             val sink = onLive ?: return
@@ -104,6 +125,8 @@ class ChatStreamRunner(
                     messageId = assistantMessageId,
                     thinking = liveThink.toString(),
                     text = liveText.toString(),
+                    thinkingDone = liveThinkingDone,
+                    thinkingSeconds = liveThinkingSeconds.takeIf { it > 0 },
                 ),
             )
         }
@@ -140,8 +163,17 @@ class ChatStreamRunner(
                 assembler.onFrame(event.name, event.data)
                 assembler.drainLive { delta ->
                     when (delta) {
-                        LiveDelta.ThinkStart -> liveThink.setLength(0)
+                        LiveDelta.ThinkStart -> {
+                            liveThink.setLength(0)
+                            liveThinkingDone = false
+                        }
+
                         is LiveDelta.Think -> liveThink.append(delta.text)
+                        is LiveDelta.ThinkStop -> {
+                            liveThinkingDone = true
+                            delta.elapsedSecs?.let { liveThinkingSeconds += it }
+                        }
+
                         is LiveDelta.Text -> liveText.append(delta.text)
                     }
                 }

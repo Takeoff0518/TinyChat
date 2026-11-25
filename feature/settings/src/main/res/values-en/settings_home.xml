@@ -13,6 +13,7 @@
     <string name="prefs_home_font">Text size</string>
     <string name="prefs_home_prompt">Prompts</string>
     <string name="prefs_home_metadata">User context</string>
+    <string name="prefs_home_thinking_collapse">Collapse thinking automatically</string>
     <string name="prefs_home_usage">Show usage per reply</string>
     <string name="prefs_home_voice">Voice</string>
     <string name="prefs_home_read_voice">Read-aloud voice</string>

@@ -234,9 +234,13 @@ internal fun isContextFull(used: Int, window: Int): Boolean =
  *
  * 生成刚结束那一刻库里还落后一个落库间隔，这时切过去会看到正文忽然变短、再长回来，
  * 所以判据是**长度**而不是「生成结束」（决策 74）。
+ *
+ * **实时正文还是空的就一律不交棒**（决策 80）：思考阶段两边的正文都是空字符串，
+ * `0 >= 0` 恒真，于是每来一次落库就把实时快照撤掉一次——界面那会儿正靠这份快照
+ * 画思维链，撤掉之后口径在「实时」和「库里落后一截」之间来回切，重放就是这么来的。
  */
 internal fun liveCaughtUp(stored: String?, live: String): Boolean =
-    stored != null && stored.length >= live.length
+    live.isNotEmpty() && stored != null && stored.length >= live.length
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -309,6 +313,8 @@ data class ChatUiState(
     val showUsage: Boolean = true,
     /** 用户元信息（`latest_reminder`）开关（M7-5，默认开） */
     val reminderEnabled: Boolean = true,
+    /** 思维链在思考结束后自动收起（决策 80，默认开）；关掉就一律平铺 */
+    val thinkingAutoCollapse: Boolean = true,
 ) {
     /** 当前服务商；被删除后为 null */
     val currentProvider: Provider?
@@ -553,6 +559,11 @@ class ChatViewModel(
         viewModelScope.launch {
             settings.reminderEnabled.distinctUntilChanged().collect { enabled ->
                 state = state.copy(reminderEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            settings.thinkingAutoCollapse.distinctUntilChanged().collect { collapse ->
+                state = state.copy(thinkingAutoCollapse = collapse)
             }
         }
         viewModelScope.launch {
@@ -1436,6 +1447,11 @@ class ChatViewModel(
     /** 用户元信息开关（M7-5） */
     fun setReminderEnabled(enabled: Boolean) {
         viewModelScope.launch { settings.setReminderEnabled(enabled) }
+    }
+
+    /** 思维链在思考结束后自动收起（决策 80） */
+    fun setThinkingAutoCollapse(enabled: Boolean) {
+        viewModelScope.launch { settings.setThinkingAutoCollapse(enabled) }
     }
 
     fun refreshUsageNow() {

@@ -15,11 +15,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.IntState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.MotionDurationScale
@@ -53,14 +52,27 @@ internal fun List<TimelineItem>.thinkingPreviewText(): String {
     return parts.singleOrNull()?.content ?: parts.joinToString("\n") { it.content }
 }
 
+/**
+ * 推进滚动窗口的游标（决策 80）。
+ *
+ * 游标挂在思维链块上，不跟着这个窗口的生死走：窗口收起来、或者整块被滚出屏幕再回来，
+ * 都从**当前位置**继续，不会把已经看过的内容再吐一遍（以前点开重放一遍就是这么来的）。
+ * 窗口刚铺开的那一帧先对齐到当前文本末尾，只有之后新到的字才逐帧吐。
+ */
 @Composable
-internal fun rememberThinkingPreviewEnd(text: String, active: Boolean, streaming: Boolean): IntState {
-    // Keep the cursor with the message when its preview is hidden or scrolled off screen.
-    val end = rememberSaveable { mutableIntStateOf(if (streaming) 0 else text.length) }
+internal fun rememberThinkingCursor(
+    end: MutableIntState,
+    text: String,
+    visible: Boolean,
+    streaming: Boolean,
+) {
     val currentText by rememberUpdatedState(text)
-    LaunchedEffect(active, streaming) {
-        if (!active) return@LaunchedEffect
+    LaunchedEffect(visible, streaming) {
+        if (!visible) return@LaunchedEffect
         val reveal = ThinkingReveal(end.intValue)
+        // 先对齐：中途收起过、或者从平铺切回来，已经写好的内容不该再演一遍
+        reveal.update(currentText)
+        end.intValue = reveal.skip()
         val motion = coroutineContext[MotionDurationScale]
         snapshotFlow { currentText to (motion?.scaleFactor ?: 1f) }.collect {
             do {
@@ -76,7 +88,6 @@ internal fun rememberThinkingPreviewEnd(text: String, active: Boolean, streaming
             } while (reveal.hasPending || latest != currentText)
         }
     }
-    return end
 }
 
 @Composable

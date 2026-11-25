@@ -83,6 +83,9 @@ fun SettingsScreen(
     /** 每轮统计条开关（M7-3，默认开） */
     showUsage: Boolean = true,
     onToggleShowUsage: (Boolean) -> Unit = {},
+    /** 思维链在思考结束后自动收起（决策 80，默认开） */
+    thinkingAutoCollapse: Boolean = true,
+    onToggleThinkingAutoCollapse: (Boolean) -> Unit = {},
     /** 用户元信息开关（M7-5，默认开） */
     reminderEnabled: Boolean = true,
     onToggleReminder: (Boolean) -> Unit = {},
@@ -138,6 +141,12 @@ fun SettingsScreen(
                 SettingsLink(TcIcons.TypeSize, stringResource(R.string.prefs_home_font), stringResource(fontScale.fontLabel)) { fontPicker = true }
                 SettingsLink(TcIcons.File, stringResource(R.string.prefs_home_prompt), promptName, onOpenPrompt)
                 SettingsSwitch(TcIcons.Account, stringResource(R.string.prefs_home_metadata), reminderEnabled, onToggleReminder)
+                SettingsSwitch(
+                    TcIcons.Think,
+                    stringResource(R.string.prefs_home_thinking_collapse),
+                    thinkingAutoCollapse,
+                    onToggleThinkingAutoCollapse,
+                )
                 SettingsSwitch(TcIcons.Usage, stringResource(R.string.prefs_home_usage), showUsage, onToggleShowUsage)
             }
             SettingsGroup(stringResource(R.string.prefs_home_voice)) {

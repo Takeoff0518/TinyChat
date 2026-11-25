@@ -32,6 +32,7 @@
     <string name="chat_continue">繼續生成</string>
     <string name="chat_copied">已複製</string>
     <string name="chat_copy">複製</string>
+    <string name="chat_copy_reasoning">複製思考過程</string>
     <string name="chat_copy_text">複製文字</string>
     <string name="chat_couldn_t_create_the_image_try_again">生成長圖失敗，請重試</string>
     <string name="chat_couldn_t_generate_a_response_try_again">生成失敗，請重試</string>

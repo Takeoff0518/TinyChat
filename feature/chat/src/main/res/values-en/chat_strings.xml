@@ -32,6 +32,7 @@
     <string name="chat_continue">Continue</string>
     <string name="chat_copied">Copied</string>
     <string name="chat_copy">Copy</string>
+    <string name="chat_copy_reasoning">Copy reasoning</string>
     <string name="chat_copy_text">Copy text</string>
     <string name="chat_couldn_t_create_the_image_try_again">Couldn’t create the image. Try again.</string>
     <string name="chat_couldn_t_generate_a_response_try_again">Couldn’t generate a response. Try again.</string>

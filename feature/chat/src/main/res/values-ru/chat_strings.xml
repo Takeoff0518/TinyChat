@@ -32,6 +32,7 @@
     <string name="chat_continue">Продолжить</string>
     <string name="chat_copied">Скопировано</string>
     <string name="chat_copy">Копировать</string>
+    <string name="chat_copy_reasoning">Копировать рассуждение</string>
     <string name="chat_copy_text">Копировать текст</string>
     <string name="chat_couldn_t_create_the_image_try_again">Не удалось создать изображение. Попробуйте ещё раз.</string>
     <string name="chat_couldn_t_generate_a_response_try_again">Не удалось сгенерировать ответ. Попробуйте ещё раз.</string>
