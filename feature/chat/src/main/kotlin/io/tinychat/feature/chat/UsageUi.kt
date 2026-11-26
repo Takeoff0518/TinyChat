@@ -207,19 +207,25 @@ fun UsageStatsLine(usage: Usage, costMicros: Long?) {
     }
 
     if (open) {
+        // 四行文案在**主窗口**里就解析好：浮层是独立窗口，`stringResource` 在它里面会用
+        // 自己的 Resources 走系统（或系统级「应用语言」），不跟应用内的语言设置
+        //（决策 78 的老坑，这次在 Popup 上又踩了一次：中文界面弹出英文标签，决策 87）。
+        val rows = usageBreakdownRows(usage).map { row ->
+            stringResource(row.labelRes) to stringResource(R.string.chat_token_count, Money.tokens(row.tokens))
+        }
         TcAnchorPopup(
             visible = true,
             anchor = MenuAnchor.RowLeft(anchor.rect),
             onDismiss = { open = false },
         ) {
-            UsageBreakdownCard(usage)
+            UsageBreakdownCard(rows)
         }
     }
 }
 
-/** 明细卡：四项精确值，千分位、右对齐。 */
+/** 明细卡：四项精确值，千分位、右对齐。文案由调用方在父组合里解析好传进来。 */
 @Composable
-private fun UsageBreakdownCard(usage: Usage) {
+private fun UsageBreakdownCard(rows: List<Pair<String, String>>) {
     val palette = TcTheme.palette
     Column(
         modifier = Modifier
@@ -229,7 +235,7 @@ private fun UsageBreakdownCard(usage: Usage) {
             .width(UsageCardWidth)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        usageBreakdownRows(usage).forEach { row ->
+        rows.forEach { (label, value) ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -237,14 +243,14 @@ private fun UsageBreakdownCard(usage: Usage) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = stringResource(row.labelRes),
+                    text = label,
                     style = UsageLineStyle,
                     color = palette.labelSecondary,
                 )
                 Spacer(Modifier.width(12.dp))
                 Spacer(Modifier.weight(1f))
                 Text(
-                    text = stringResource(R.string.chat_token_count, Money.tokens(row.tokens)),
+                    text = value,
                     style = UsageLineStyle,
                     color = palette.labelPrimary,
                     textAlign = TextAlign.End,
