@@ -145,7 +145,10 @@ CI 会出包并把 APK 挂到 GitHub Releases。也可以不发 CI，直接手�
   - 每轮用量行：折叠行与明细卡在简体、繁體下各验一次，有费用（`￥0.017`）与无费用（`99 tok`）两种会话都验（P-050、P-051）；
   - 签名 `CN=TinyChat`、V2、证书指纹仍为 `9eccb46d…fd89`；产物 4,216,288 B（README 的「约 4 MB」仍成立，未改）；
   - 产物体检按 2.4：开发 Key 零命中，`Lorg/robolectric/`、`Lokhttp3/mockwebserver/`、`Landroidx/test/`、`Ljunit/`、`Landroidx/compose/ui/tooling/` 全为 0。
-- APK SHA-256：`D63356D461C71491C3F626095DC0C0CADFF199BECDC8632D8BEED8F36A71C2AC`。
+- APK SHA-256：`D63356D461C71491C3F626095DC0C0CADFF199BECDC8632D8BEED8F36A71C2AC`（**本机产物**）。
+- CI 出包：`Release` 工作流 6 分 10 秒，产物 `TinyChat-v1.1.1.apk`，体积与本机一致（4,216,288 B）、证书一致、`versionCode 3 / versionName 1.1.1` 核对无误；但**字节不同**（zip 时间戳与 R8 顺序跨机器不一致），要校验就比体积、证书与版本号，**不要比 SHA-256**。
+- 这一版的 Release 说明是手写的（`gh release edit --notes-file`），没有用 `--generate-notes` 的「只有 Full Changelog」那版；以后发版沿用「六条改了什么 + 修好了什么 + 安装方式」三段。
+- 第一次推上去时 `CI`（master）挂在 **8 秒**：`org.jetbrains.kotlin.jvm:2.4.21` 在 Google / MavenRepo / Gradle Central Plugin Repository 全都解析不到。同一时刻的 `Release` 跑同样的 Gradle 命令却是绿的，`gh run rerun` 之后也转绿——属于**插件仓库的偶发解析失败**，不是代码问题。以后再看到「某插件在所有仓库都找不到」这种一秒挂的日志，先重跑再查。
 
 ## 3. 记忆点
 
