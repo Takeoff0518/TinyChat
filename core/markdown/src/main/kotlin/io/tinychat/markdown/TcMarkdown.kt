@@ -21,6 +21,7 @@ import com.mikepenz.markdown.compose.extendedspans.ExtendedSpans
 import com.mikepenz.markdown.model.BulletHandler
 import com.mikepenz.markdown.model.markdownAnimations
 import com.mikepenz.markdown.model.markdownExtendedSpans
+import com.mikepenz.markdown.model.parseMarkdown
 import com.mikepenz.markdown.model.rememberStreamingMarkdownState
 import kotlinx.coroutines.delay
 import org.intellij.markdown.MarkdownTokenTypes
@@ -95,6 +96,43 @@ fun TcMarkdown(
     // extend() / onTextLayout / drawBehind 这一整条链路
     val withInlineCode = remember(target) { target.contains('`') }
     val inlineContent = citationInlineContent(anchoredCitations, citedSources, onCitationClick)
+
+    // —— 已结束的消息：同步解析，第一帧就按最终高度排版（P-046）——
+    //
+    // 以前所有消息都走「先空、再异步追加」的流式通道。已结束的消息因此第一帧只有一行高
+    // （真机实测 101px），下一帧全文到齐变成 9856px；这条消息要是正好在视口上方，
+    // 列表会把滚动锚点往回挪，表现为「轻轻一划就跳过中间那条长消息」。
+    //
+    // 同步解析把这一下提前到组合阶段：一次测量到位，高度不再变化。
+    // 代价是这一帧多花解析的时间（7.4k 字符约 10–23ms），但省掉了中间那次空布局，
+    // 而且换来的「高度不跳」正是列表不被顶走的前提。
+    if (!streaming) {
+        val parsed = remember(target) { parseMarkdown(target) }
+        CompositionLocalProvider(
+            LocalBulletListHandler provides TcBulletHandler,
+            LocalMarkdownStreaming provides false,
+            LocalCitationAnchors provides anchoredCitations,
+            LocalCitationCount provides citedSources,
+        ) {
+            Markdown(
+                state = parsed,
+                colors = tcMarkdownColors(),
+                typography = tcMarkdownTypography(LocalTcFontScale.current),
+                padding = tcMarkdownPadding(),
+                dimens = tcMarkdownDimens(),
+                modifier = modifier.fillMaxWidth(),
+                components = tcMarkdownComponents(),
+                inlineContent = inlineContent,
+                extendedSpans = inlineCodeSpans(withInlineCode),
+                animations = markdownAnimations { this },
+                success = { success, components, mdModifier ->
+                    val blocks = remember(success) { success.node.children.withoutEol() }
+                    RenderBlocks(blocks, success.content, components, mdModifier)
+                },
+            )
+        }
+        return
+    }
 
     key(generation) {
         val state = rememberStreamingMarkdownState()
