@@ -175,7 +175,9 @@
     <string name="chat_upload_retry">上傳失敗，點按重試</string>
     <string name="chat_uploading">上傳中</string>
     <string name="chat_usage_and_costs">用量與費用</string>
-    <string name="chat_usage_stats_line">"%1$s 命中  %2$s 未命中  %3$s 輸出"</string>
+    <string name="chat_usage_open_detail">查看用量明細</string>
+    <string name="chat_usage_this_round">本輪用量</string>
+    <string name="chat_token_count">%1$s tok</string>
     <string name="chat_voice_input">語音輸入</string>
     <string name="chat_web_result_count">%d 個網頁</string>
     <string name="chat_web_search_is_unavailable">暫時無法使用網路搜尋</string>

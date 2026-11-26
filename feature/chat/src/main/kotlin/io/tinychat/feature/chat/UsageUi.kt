@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -22,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,15 +33,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.tinychat.designsystem.TcIcons
@@ -49,6 +56,8 @@ import io.tinychat.model.QuotaWindow
 import io.tinychat.model.Usage
 import io.tinychat.model.billing.Money
 import io.tinychat.model.billing.UsageSummary
+import io.tinychat.ui.MenuAnchor
+import io.tinychat.ui.TcAnchorPopup
 import io.tinychat.ui.TcIconButton
 
 /** 说明文案（点标签展开）。集中在一处，做 i18n 时只改这里。 */
@@ -124,28 +133,137 @@ fun ContextRing(
     }
 }
 
-/** 每轮回答下面那一行（M7-3）：`4,096 命中  9,078 未命中  1,686 输出  ￥0.0259` */
+private val UsageLineStyle = TextStyle(fontSize = 12.sp, lineHeight = 18.sp)
+
+/** 明细卡宽度：四项数字要右对齐成列，宽度就得定死，否则每张卡的数字位置都不一样。 */
+private val UsageCardWidth = 240.dp
+
+private val UsageCardShape = RoundedCornerShape(12.dp)
+
+/**
+ * 用量行的锚点矩形。
+ *
+ * 存普通字段而不是 `mutableStateOf`：滚动时这一行每一帧都会回调 `onGloballyPositioned`，
+ * 写进 State 就会让整行跟着重组（B-015 的教训）。只在点开的一瞬间读一次。
+ */
+private class UsageAnchor {
+    var rect: IntRect = IntRect.Zero
+}
+
+/**
+ * 每轮用量（决策 86）：折成一行 `▁▄▆ 11.0M tok  ￥0.1145`。
+ *
+ * 原来那行四段数字（命中/未命中/输出/费用）在每条回答下面都占一整行，读起来是噪音；
+ * 折成总量之后一行讲完，精确值挪进点开的小卡片——少占地方，信息反而更全。
+ */
 @Composable
 fun UsageStatsLine(usage: Usage, costMicros: Long?) {
     val palette = TcTheme.palette
-    val tokens = stringResource(
-        R.string.chat_usage_stats_line,
-        Money.tokens(usage.cacheHitTokens.toLong()),
-        Money.tokens(usage.promptTokens.toLong()),
-        Money.tokens(usage.completionTokens.toLong()),
-    )
-    val line = buildString {
-        append(tokens)
+    val total = usage.totalTokens
+    // 全零（部分从官方归档导入的消息）：整行不占位，也不写「0 tok」
+    if (total <= 0L) return
+
+    var open by remember { mutableStateOf(false) }
+    val anchor = remember { UsageAnchor() }
+    val tokenText = stringResource(R.string.chat_token_count, Money.compactTokens(total))
+    val openHint = stringResource(R.string.chat_usage_open_detail)
+
+    Row(
+        modifier = Modifier
+            .padding(top = 6.dp)
+            // 12sp 的那一行字只有 18dp 高，手指够不着；补到 32dp 又不至于在聊天流里挖出一块空白
+            .heightIn(min = 32.dp)
+            .onGloballyPositioned {
+                val rect = it.boundsInWindow()
+                anchor.rect = IntRect(
+                    left = rect.left.toInt(),
+                    top = rect.top.toInt(),
+                    right = rect.right.toInt(),
+                    bottom = rect.bottom.toInt(),
+                )
+            }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClickLabel = openHint,
+                role = Role.Button,
+            ) { open = true },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = TcIcons.Usage,
+            contentDescription = null,
+            tint = palette.labelTertiary,
+            modifier = Modifier.size(14.dp),
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(text = tokenText, style = UsageLineStyle, color = palette.labelTertiary)
         // 第三方服务商没有单价表（CostCalculator 返回 0）：只显示 token，不编一个 ￥0.0000
-        if (costMicros != null && costMicros > 0) append("  ${Money.format(costMicros)}")
+        if (costMicros != null && costMicros > 0) {
+            Spacer(Modifier.width(10.dp))
+            // 与 token 同一个灰阶：同一行里两档灰看起来像配色没配齐（用户当场指出）
+            Text(text = Money.format(costMicros), style = UsageLineStyle, color = palette.labelTertiary)
+        }
     }
-    Text(
-        text = line,
-        style = TextStyle(fontSize = 12.sp, lineHeight = 18.sp),
-        color = palette.labelTertiary,
-        modifier = Modifier.padding(top = 6.dp),
-    )
+
+    if (open) {
+        TcAnchorPopup(
+            visible = true,
+            anchor = MenuAnchor.RowLeft(anchor.rect),
+            onDismiss = { open = false },
+        ) {
+            UsageBreakdownCard(usage)
+        }
+    }
 }
+
+/** 明细卡：四项精确值，千分位、右对齐。 */
+@Composable
+private fun UsageBreakdownCard(usage: Usage) {
+    val palette = TcTheme.palette
+    Column(
+        modifier = Modifier
+            .shadow(8.dp, UsageCardShape)
+            .clip(UsageCardShape)
+            .background(palette.bgLayer2)
+            .width(UsageCardWidth)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        usageBreakdownRows(usage).forEach { row ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(row.labelRes),
+                    style = UsageLineStyle,
+                    color = palette.labelSecondary,
+                )
+                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = stringResource(R.string.chat_token_count, Money.tokens(row.tokens)),
+                    style = UsageLineStyle,
+                    color = palette.labelPrimary,
+                    textAlign = TextAlign.End,
+                )
+            }
+        }
+    }
+}
+
+/** 明细卡的一行：标签资源 + 精确 token。抽成纯函数，好在 JVM 上钉住「总数 = 三项之和」。 */
+internal data class UsageBreakdownRow(val labelRes: Int, val tokens: Long)
+
+internal fun usageBreakdownRows(usage: Usage): List<UsageBreakdownRow> = listOf(
+    UsageBreakdownRow(R.string.chat_usage_this_round, usage.totalTokens),
+    UsageBreakdownRow(R.string.chat_cache_hits, usage.cacheHitTokens.toLong()),
+    UsageBreakdownRow(R.string.chat_uncached_input, usage.promptTokens.toLong()),
+    UsageBreakdownRow(R.string.chat_output, usage.completionTokens.toLong()),
+)
+
 
 /**
  * 「用量与费用」抽屉内容。
@@ -199,7 +317,7 @@ fun UsageDrawerContent(
             Spacer(Modifier.weight(1f))
             Text(
                 text = if (contextWindow > 0) {
-                    "~${compactTokens(contextUsed)} / ${compactTokens(contextWindow)}"
+                    "~${compactTokens(contextUsed)} / ${compactCapacity(contextWindow)}"
                 } else {
                     "~${compactTokens(contextUsed)}"
                 },
@@ -434,17 +552,7 @@ private fun ColumnScope.MetricBlock(label: String, value: Int, hasData: Boolean)
     )
 }
 
-/** `120000` → `120K`；`623400` → `623.4K`；`1000000` → `1M`。 */
-internal fun compactTokens(value: Int): String {
-    val v = value.coerceAtLeast(0)
-    return when {
-        v < 1_000 -> v.toString()
-        v < 1_000_000 -> trimZero(v / 1_000.0) + "K"
-        else -> trimZero(v / 1_000_000.0) + "M"
-    }
-}
+/** 抽屉里的紧凑数字：用量按用量规则（`8.4M`），窗口上限按容量规则（`1M`）。 */
+internal fun compactTokens(value: Int): String = Money.compactTokens(value.toLong())
 
-private fun trimZero(value: Double): String {
-    val text = "%.1f".format(value)
-    return if (text.endsWith(".0")) text.dropLast(2) else text
-}
+internal fun compactCapacity(value: Int): String = Money.compactCapacity(value.toLong())

@@ -23,6 +23,9 @@ data class Usage(
 ) {
     val totalInput: Int get() = promptTokens + cacheHitTokens
 
+    /** 这一轮的总 token（命中 + 未命中 + 输出）：每轮用量行与明细卡的第一行用它（决策 86） */
+    val totalTokens: Long get() = totalInput.toLong() + completionTokens
+
     /** 上下文圆环的分子 */
     val contextUsed: Int get() = totalInput + completionTokens
 

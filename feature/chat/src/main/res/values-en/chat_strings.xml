@@ -175,7 +175,9 @@
     <string name="chat_upload_retry">Upload failed. Tap to retry.</string>
     <string name="chat_uploading">Uploading</string>
     <string name="chat_usage_and_costs">Usage and costs</string>
-    <string name="chat_usage_stats_line">"%1$s cached  %2$s uncached  %3$s output"</string>
+    <string name="chat_usage_open_detail">View usage details</string>
+    <string name="chat_usage_this_round">This turn</string>
+    <string name="chat_token_count">%1$s tok</string>
     <string name="chat_voice_input">Voice input</string>
     <string name="chat_web_result_count">Web results (%d)</string>
     <string name="chat_web_search_is_unavailable">Web search is unavailable</string>

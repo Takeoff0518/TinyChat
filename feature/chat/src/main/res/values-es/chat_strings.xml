@@ -175,7 +175,9 @@
     <string name="chat_upload_retry">No se pudo subir el archivo. Toca para reintentar.</string>
     <string name="chat_uploading">Subiendo archivo</string>
     <string name="chat_usage_and_costs">Uso y costes</string>
-    <string name="chat_usage_stats_line">"%1$s en caché  %2$s sin caché  %3$s de salida"</string>
+    <string name="chat_usage_open_detail">Ver el desglose de uso</string>
+    <string name="chat_usage_this_round">Este turno</string>
+    <string name="chat_token_count">%1$s tok</string>
     <string name="chat_voice_input">Entrada de voz</string>
     <string name="chat_web_result_count">Resultados web (%d)</string>
     <string name="chat_web_search_is_unavailable">La búsqueda web no está disponible</string>

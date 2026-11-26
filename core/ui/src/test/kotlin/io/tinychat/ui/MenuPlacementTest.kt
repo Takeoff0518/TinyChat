@@ -70,4 +70,25 @@ class MenuPlacementTest {
         val offset = menuOffset(pointer(200, 100), IntSize(300, 200), narrow, gap, margin)
         assertEquals(IntOffset(50, 92), offset)
     }
+
+    @Test
+    fun `贴左对齐时弹出层左边缘与锚点左边缘重合`() {
+        val row = IntRect(48, 1000, 400, 1096)
+        val offset = menuOffset(row, IntSize(720, 300), window, gap = 8, margin = margin, align = HorizontalAlign.Left)
+        assertEquals(IntOffset(48, 692), offset)
+    }
+
+    @Test
+    fun `贴左对齐且锚点贴屏幕边时往里推`() {
+        val row = IntRect(2, 1000, 300, 1096)
+        val offset = menuOffset(row, IntSize(720, 300), window, gap = 8, margin = margin, align = HorizontalAlign.Left)
+        assertEquals(8, offset.x)
+    }
+
+    @Test
+    fun `贴左对齐且锚点靠右时钳在右边界`() {
+        val row = IntRect(900, 1000, 1060, 1096)
+        val offset = menuOffset(row, IntSize(720, 300), window, gap = 8, margin = margin, align = HorizontalAlign.Left)
+        assertEquals(352, offset.x)
+    }
 }

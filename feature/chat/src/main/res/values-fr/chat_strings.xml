@@ -175,7 +175,9 @@
     <string name="chat_upload_retry">Échec de l’envoi. Touchez pour réessayer.</string>
     <string name="chat_uploading">Envoi en cours</string>
     <string name="chat_usage_and_costs">Utilisation et coûts</string>
-    <string name="chat_usage_stats_line">"%1$s en cache  %2$s hors cache  %3$s en sortie"</string>
+    <string name="chat_usage_open_detail">Voir le détail de l’utilisation</string>
+    <string name="chat_usage_this_round">Ce tour</string>
+    <string name="chat_token_count">%1$s tok</string>
     <string name="chat_voice_input">Saisie vocale</string>
     <string name="chat_web_result_count">Résultats web (%d)</string>
     <string name="chat_web_search_is_unavailable">La recherche web est indisponible</string>

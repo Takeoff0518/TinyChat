@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,6 +51,14 @@ sealed interface MenuAnchor {
 
     /** 贴在这一行正上方、水平居中 */
     data class Row(val bounds: IntRect) : MenuAnchor
+
+    /**
+     * 贴在这一行正上方，但**左边缘与行左边缘对齐**（不居中）。
+     *
+     * 每轮用量明细卡用它（决策 86）：那是一张贴着正文左边缘的数据表，
+     * 居中会让整块浮在句子的中间、与左边那行数字错开半个屏幕。
+     */
+    data class RowLeft(val bounds: IntRect) : MenuAnchor
 }
 
 data class TcMenuItem(
@@ -71,21 +80,24 @@ private val ScreenMargin = 8.dp
 private val MenuShape = RoundedCornerShape(12.dp)
 
 /**
- * 长按菜单（`06` §二 §三）。
+ * 贴着锚点弹出的小浮层外壳（位置、进出场动画、点外部/返回键关闭）。
  *
- * 位置由 [MenuAnchor] 决定，不用 Material 的 `DropdownMenu`：它的落点由内部 provider 钉死在锚点角落，
- * 做不出「贴在手指上方、水平居中对齐触点」。自绘 Popup 之后颜色也用回了自己的色板。
+ * 抽出来是因为长按菜单和「每轮用量明细」（决策 86）要的是同一套落点规则：
+ * 贴锚点上方、上方放不下翻到下方、左右不越界。两份代码各写一遍，
+ * 迟早会出现「菜单往上、卡片往下」这种不一致。
+ *
+ * [content] 收到的是「先播完退场动画再执行」的关闭函数——卡片没有后续动作用 `{ close {} }`，
+ * 菜单选项则是先关再弹下一步（例如打开底部面板），顺序反了会看到菜单和面板同时在场。
  */
 @Composable
-fun TcAnchorMenu(
+fun TcAnchorPopup(
     visible: Boolean,
     anchor: MenuAnchor,
-    items: List<TcMenuItem>,
     onDismiss: () -> Unit,
+    content: @Composable (close: (then: () -> Unit) -> Unit) -> Unit,
 ) {
-    if (!visible || items.isEmpty()) return
+    if (!visible) return
 
-    val palette = TcTheme.palette
     val density = LocalDensity.current
     val gapPx = with(density) { (if (anchor is MenuAnchor.Pointer) PointerGap else RowGap).roundToPx() }
     val marginPx = with(density) { ScreenMargin.roundToPx() }
@@ -98,7 +110,7 @@ fun TcAnchorMenu(
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
 
-    fun dismissAfterExit(then: () -> Unit) {
+    fun closeAfterExit(then: () -> Unit) {
         if (closing) return
         closing = true
         scope.launch {
@@ -110,7 +122,7 @@ fun TcAnchorMenu(
 
     Popup(
         popupPositionProvider = provider,
-        onDismissRequest = { dismissAfterExit(onDismiss) },
+        onDismissRequest = { closeAfterExit(onDismiss) },
         properties = PopupProperties(
             focusable = true,
             dismissOnBackPress = true,
@@ -123,15 +135,37 @@ fun TcAnchorMenu(
                 durationMillis = if (closing) TcMotion.MenuOut else TcMotion.MenuIn,
                 easing = if (closing) TcMotion.Decelerate else TcMotion.Standard,
             ),
-            label = "anchor-menu",
+            label = "anchor-popup",
         )
+        Box(
+            modifier = Modifier.graphicsLayer {
+                scaleX = 0.96f + 0.04f * progress
+                scaleY = 0.96f + 0.04f * progress
+                alpha = progress
+            },
+        ) {
+            content(::closeAfterExit)
+        }
+    }
+}
+
+/**
+ * 长按菜单（`06` §二 §三）。
+ *
+ * 位置由 [MenuAnchor] 决定，不用 Material 的 `DropdownMenu`：它的落点由内部 provider 钉死在锚点角落，
+ * 做不出「贴在手指上方、水平居中对齐触点」。自绘 Popup 之后颜色也用回了自己的色板。
+ */
+@Composable
+fun TcAnchorMenu(
+    visible: Boolean,
+    anchor: MenuAnchor,
+    items: List<TcMenuItem>,
+    onDismiss: () -> Unit,
+) {
+    val palette = TcTheme.palette
+    TcAnchorPopup(visible = visible && items.isNotEmpty(), anchor = anchor, onDismiss = onDismiss) { close ->
         Column(
             modifier = Modifier
-                .graphicsLayer {
-                    scaleX = 0.96f + 0.04f * progress
-                    scaleY = 0.96f + 0.04f * progress
-                    alpha = progress
-                }
                 .shadow(8.dp, MenuShape)
                 .clip(MenuShape)
                 .background(palette.bgLayer2)
@@ -149,7 +183,7 @@ fun TcAnchorMenu(
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { dismissAfterExit(item.onClick) }
+                        .clickable { close(item.onClick) }
                         .padding(horizontal = 20.dp, vertical = 12.dp),
                 )
             }
@@ -171,8 +205,10 @@ private class TcMenuPositionProvider(
         val rect = when (anchor) {
             is MenuAnchor.Pointer -> IntRect(anchor.center.x, anchor.center.y, anchor.center.x, anchor.center.y)
             is MenuAnchor.Row -> anchor.bounds
+            is MenuAnchor.RowLeft -> anchor.bounds
         }
-        return menuOffset(rect, popupContentSize, windowSize, gapPx, marginPx)
+        val align = if (anchor is MenuAnchor.RowLeft) HorizontalAlign.Left else HorizontalAlign.Center
+        return menuOffset(rect, popupContentSize, windowSize, gapPx, marginPx, align)
     }
 }
 

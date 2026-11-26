@@ -140,4 +140,45 @@ object Money {
 
     /** 千分位 token：`1919810` → `1,919,810`。 */
     fun tokens(count: Long): String = "%,d".format(count)
+
+    /**
+     * 紧凑 token（决策 86）：`742` / `900K` / `8.4M` / `11.0M`。
+     *
+     * 两级的小数位规则不一样，这是故意的：K 级最大只到 999.9，整数段自己就够读（`900K`），
+     * 再补一位小数只是变长；M 级是给人看量级的，少掉那一位反而像估出来的（`11M`）。
+     * 进位在同一处判断——999,960 不能印成 `1000K`，要进位成 `1.0M`。
+     */
+    fun compactTokens(count: Long): String {
+        val v = count.coerceAtLeast(0)
+        if (v < 1_000) return v.toString()
+        if (v < 1_000_000) {
+            val tenths = (v + 50) / 100
+            if (tenths < 10_000) return dropTenthZero(tenths) + "K"
+        }
+        // 顶层不设 B：一轮十亿 token 不现实，真到了也照样按 M 显示
+        return oneDecimal((v + 50_000) / 100_000) + "M"
+    }
+
+    /**
+     * 紧凑容量（上下文窗口这类「上限」）：`64K` / `200K` / `1M`，**不带多余的小数**。
+     *
+     * 和 [compactTokens] 分开是因为语义不同：窗口大小是几个写死的整数（1M、200K），
+     * 写成 `1.0M` 只会让人以为还量了一次。
+     */
+    fun compactCapacity(count: Long): String {
+        val v = count.coerceAtLeast(0)
+        if (v < 1_000) return v.toString()
+        if (v < 1_000_000) {
+            val tenths = (v + 50) / 100
+            if (tenths < 10_000) return dropTenthZero(tenths) + "K"
+        }
+        return dropTenthZero((v + 50_000) / 100_000) + "M"
+    }
+
+    /** `9000` → `900`；`431` → `43.1` */
+    private fun dropTenthZero(tenths: Long): String =
+        if (tenths % 10 == 0L) (tenths / 10).toString() else oneDecimal(tenths)
+
+    /** `110` → `11.0`；`84` → `8.4` */
+    private fun oneDecimal(tenths: Long): String = "${tenths / 10}.${tenths % 10}"
 }

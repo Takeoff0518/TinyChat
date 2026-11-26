@@ -175,7 +175,9 @@
     <string name="chat_upload_retry">アップロードできませんでした。タップして再試行。</string>
     <string name="chat_uploading">アップロード中</string>
     <string name="chat_usage_and_costs">使用量と料金</string>
-    <string name="chat_usage_stats_line">"ヒット %1$s  ミス %2$s  出力 %3$s"</string>
+    <string name="chat_usage_open_detail">使用量の内訳を見る</string>
+    <string name="chat_usage_this_round">今回の使用量</string>
+    <string name="chat_token_count">%1$s tok</string>
     <string name="chat_voice_input">音声入力</string>
     <string name="chat_web_result_count">ウェブ検索結果（%d 件）</string>
     <string name="chat_web_search_is_unavailable">ウェブ検索を利用できません</string>

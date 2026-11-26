@@ -175,7 +175,9 @@
     <string name="chat_upload_retry">Не удалось отправить файл. Нажмите, чтобы повторить.</string>
     <string name="chat_uploading">Отправка</string>
     <string name="chat_usage_and_costs">Использование и расходы</string>
-    <string name="chat_usage_stats_line">"%1$s из кэша  %2$s без кэша  %3$s выход"</string>
+    <string name="chat_usage_open_detail">Показать разбивку по токенам</string>
+    <string name="chat_usage_this_round">Всего за ответ</string>
+    <string name="chat_token_count">%1$s tok</string>
     <string name="chat_voice_input">Голосовой ввод</string>
     <string name="chat_web_result_count">Результаты поиска (%d)</string>
     <string name="chat_web_search_is_unavailable">Поиск в интернете недоступен</string>
