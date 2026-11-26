@@ -148,7 +148,22 @@ CI 会出包并把 APK 挂到 GitHub Releases。也可以不发 CI，直接手�
 - APK SHA-256：`D63356D461C71491C3F626095DC0C0CADFF199BECDC8632D8BEED8F36A71C2AC`（**本机产物**）。
 - CI 出包：`Release` 工作流 6 分 10 秒，产物 `TinyChat-v1.1.1.apk`，体积与本机一致（4,216,288 B）、证书一致、`versionCode 3 / versionName 1.1.1` 核对无误；但**字节不同**（zip 时间戳与 R8 顺序跨机器不一致），要校验就比体积、证书与版本号，**不要比 SHA-256**。
 - 这一版的 Release 说明是手写的（`gh release edit --notes-file`），没有用 `--generate-notes` 的「只有 Full Changelog」那版；以后发版沿用「六条改了什么 + 修好了什么 + 安装方式」三段。
-- 第一次推上去时 `CI`（master）挂在 **8 秒**：`org.jetbrains.kotlin.jvm:2.4.21` 在 Google / MavenRepo / Gradle Central Plugin Repository 全都解析不到。同一时刻的 `Release` 跑同样的 Gradle 命令却是绿的，`gh run rerun` 之后也转绿——属于**插件仓库的偶发解析失败**，不是代码问题。以后再看到「某插件在所有仓库都找不到」这种一秒挂的日志，先重跑再查。
+- 第一次推上去时 `CI`（master）挂在 **8 秒**：`org.jetbrains.kotlin.jvm:2.4.21` 在 Google / MavenRepo / Gradle Central Plugin Repository 全都解析不到。同一时刻的 `Release` 跑同样的 Gradle 命令却是绿的，`gh run rerun` 之后也转绿——属于**插件仓库的偶发解析失败**，不是代码问题。这类外网故障现在已有缓存与重试兜底，见 §2.10。
+
+### 2.10 CI 的两处兜底：依赖缓存与 PR 触发（2026-11-26）
+
+发 1.1.1 那天 `master` 的 CI 连红两次，都不是代码的问题：
+
+1. **8 秒就挂**：`org.jetbrains.kotlin.jvm:2.4.21` 在 Google、MavenRepo、Gradle Central Plugin Repository 全都解析不到；同一时刻的 Release 跑同样的 Gradle 命令是绿的。
+2. **3 分钟挂**：六个 Robolectric 用例整组 `classMethod FAILED`，堆栈是 `MavenArtifactFetcher` 里的 `HttpURLConnection` 抛 `IOException`——它**不走 Gradle 缓存**，每台新 runner 都要从 Maven Central 现下 `android-all` jar（实测一次 374 MB）。
+
+共同点是「依赖得从外网现拉」。现在三条兜底：
+
+- **Robolectric 依赖进缓存**：`actions/cache` 存 `~/.m2/repository/org/robolectric`，key 是 `robolectric-<os>-<libs.versions.toml 的哈希>`，升 Robolectric 版本自动换一份。第一次跑把它存进去，之后每次 `Cache hit` 直接命中（实测带缓存的一次 CI 65 秒，之前 2 分 45 秒）。
+- **PR 也跑**：`pull_request` 只对 `master`/`main` 生效，事件是「打开 / 追加提交 / 重开 / 标为可评审」；丢掉的是原来那句「任何 PR 任何事件都跑」的模糊配置。验证过程记在这里：开了一个空提交的临时 PR（#4），`gh run list` 看到 `event=pull_request`、日志里 `Cache restored from key`，验完关闭并删分支。
+- **失败重试一次**：Gradle 命令挂了再跑一遍，红线留给真错误；网络抖一下就过的，不用人再点一次 rerun。
+
+以后再遇到「几秒挂、报某个依赖在所有仓库都找不到」，先看是不是又冒出一个没被缓存的下载器，别急着怀疑代码。
 
 ## 3. 记忆点
 
