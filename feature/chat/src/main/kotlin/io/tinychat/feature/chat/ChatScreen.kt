@@ -860,6 +860,8 @@ private fun MessageRow(
     val haptics = LocalHapticFeedback.current
     // 实时出字时用内存快照里的正文（继续生成时已经接上了原有内容），否则用库里的
     val bodyText = liveText ?: message.text
+    // 拒答且模型一句话都没说（决策 85）：正文区改画一句兜底文案，否则这一行什么都没有
+    val refusalNotice = message.refused && bodyText.isBlank()
     // 正在长出来的思考贴到时间轴末尾；思维链本身与菜单里的「复制思考过程」共用这一份
     val liveTimeline = remember(message.timeline, liveThinking) {
         message.timeline.withLiveThinking(liveThinking)
@@ -1030,11 +1032,20 @@ private fun MessageRow(
                 }
 
                 if ((part == MessagePart.FULL || part == MessagePart.BLOCK) &&
-                    (bodyText.isNotBlank() || message.status == MessageStatus.WIP)
+                    (bodyText.isNotBlank() || message.status == MessageStatus.WIP || refusalNotice)
                 ) {
                     // 先挂载正文，短回复在第一批正文和完成状态同时到来时也能逐步显示。
                     val isStreaming = message.status == MessageStatus.WIP || liveText != null
-                    if (part == MessagePart.BLOCK) {
+                    if (refusalNotice) {
+                        // 拒答且模型一个字都没说（决策 85）：补一句兜底文案，别让这一轮变成空白。
+                        // 灰字、不走 markdown，也不假装它是模型说的话。
+                        Text(
+                            text = stringResource(R.string.chat_refusal_notice),
+                            style = TcTypography.bodyLarge,
+                            color = palette.labelSecondary,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else if (part == MessagePart.BLOCK) {
                         // B-015：这一行只渲染正文的第 blockIndex 块，别的块不组合、不排版
                         val document = remember(bodyText) {
                             markdownDocument(bodyText, message.anchors.map { CitationAnchor(it.anchor, it.index) })

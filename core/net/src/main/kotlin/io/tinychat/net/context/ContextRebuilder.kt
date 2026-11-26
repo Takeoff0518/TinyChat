@@ -113,6 +113,14 @@ object ContextRebuilder {
 
                 Role.ASSISTANT -> {
                     val user = pendingUser ?: continue
+                    // 拒答那一轮不进上下文（决策 85）：模型说的拒绝话术不是答案，回传会污染历史，
+                    // 在 Anthropic 那边还可能撞上「末尾不能是 assistant 预填」的规则。
+                    // 以前是靠「拒答时把正文删掉」让这里自然落空，现在正文要留着展示，
+                    // 就必须显式剔除；提问一起丢掉，保持 user/assistant 交替。
+                    if (turn.message.status == MessageStatus.CONTENT_FILTER) {
+                        pendingUser = null
+                        continue
+                    }
                     val assistantText = turn.usableText() ?: continue
 
                     val userText = user.userText().orEmpty()

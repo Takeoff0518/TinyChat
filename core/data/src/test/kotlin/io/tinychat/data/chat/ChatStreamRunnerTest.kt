@@ -28,6 +28,7 @@ import kotlinx.coroutines.withTimeout
 import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -151,14 +152,20 @@ class ChatStreamRunnerTest {
     }
 
     @Test
-    fun `拒答落成 CONTENT_FILTER 并丢掉思考与正文`() = runBlocking {
+    fun `拒答落成 CONTENT_FILTER 但保留已下发的正文（决策 85）`() = runBlocking {
         val id = newAssistantMessage()
         val outcome = runner().run(id, request(), FakeTransport(sse(REFUSAL_STREAM)))
 
         assertEquals(MessageStatus.CONTENT_FILTER, outcome.status)
-        // 协议要求：拒答时已下发的 thinking/text 一律作废
-        assertEquals(0, db.fragmentDao().byMessage(id).size)
-        assertEquals(MessageStatus.CONTENT_FILTER, db.messageDao().byId(id)!!.status)
+        // 模型已经说出口的拒绝话要留着展示；以前按协议一刀切删掉，界面上只剩一个没有回答的提问
+        val response = db.fragmentDao().byMessage(id)
+            .mapNotNull { (FragmentPayloadCodec.decode(it.payload) as? ResponsePayload)?.content }
+            .joinToString("")
+        assertEquals("抱歉，这个我没法帮。", response)
+        val message = db.messageDao().byId(id)!!
+        assertEquals(MessageStatus.CONTENT_FILTER, message.status)
+        // 拒答不是失败：不能挂橙色重试圆钮
+        assertNull(message.errorKind)
     }
 
     @Test

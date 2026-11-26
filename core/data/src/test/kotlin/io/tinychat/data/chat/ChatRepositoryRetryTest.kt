@@ -188,6 +188,29 @@ class ChatRepositoryRetryTest {
     }
 
     @Test
+    fun `拒答不是空壳：重试另起一版，也不被自愈清掉`() = runBlocking {
+        val repository = repository(OkTransport())
+        val sessionId = newSession(repository)
+
+        val first = repository.send(sessionId, "问一句")
+        // 模拟拒答：落成 CONTENT_FILTER，零碎片（模型什么都没说）
+        db.messageDao().setStatus(first.messageId, MessageStatus.CONTENT_FILTER)
+        db.messageDao().setError(first.messageId, null, null)
+
+        online = true
+        val next = repository.regenerate(sessionId, first.messageId)
+
+        assertTrue("拒答是结果不是空壳，重发要另起一版", next.messageId != first.messageId)
+        assertEquals(2, assistants(sessionId).size)
+        assertEquals(
+            "拒答那一版要能切回去看，不能被自愈删掉",
+            0,
+            repository.healEmptyVersions(),
+        )
+        assertNotNull(db.messageDao().byId(first.messageId))
+    }
+
+    @Test
     fun `启动自愈清掉有真回答的空失败版本，并把指针挪出来`() = runBlocking {
         val repository = repository(OkTransport())
         val sessionId = newSession(repository)

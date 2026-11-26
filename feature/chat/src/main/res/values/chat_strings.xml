@@ -116,6 +116,7 @@
     <string name="chat_recent_photo_number">最近照片 %d</string>
     <string name="chat_recording_time_limit_reached">已达到单次录音时长上限</string>
     <string name="chat_refusal">暂时无法回答，换个说法试试</string>
+    <string name="chat_refusal_notice">你好，这个问题我暂时无法回答，让我们换个话题再聊聊吧。</string>
     <string name="chat_regenerate">重新生成</string>
     <string name="chat_release_to_cancel">松开取消</string>
     <string name="chat_release_to_send">松开发送</string>

@@ -116,6 +116,7 @@
     <string name="chat_recent_photo_number">Недавнее фото %d</string>
     <string name="chat_recording_time_limit_reached">Достигнут лимит записи.</string>
     <string name="chat_refusal">Не удалось ответить. Попробуйте переформулировать запрос.</string>
+    <string name="chat_refusal_notice">Привет! Сейчас я не могу ответить на этот вопрос. Давайте сменим тему.</string>
     <string name="chat_regenerate">Сгенерировать заново</string>
     <string name="chat_release_to_cancel">Отпустите для отмены</string>
     <string name="chat_release_to_send">Отпустите для отправки</string>

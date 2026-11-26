@@ -5,7 +5,6 @@ import io.tinychat.data.db.MessageDao
 import io.tinychat.data.db.toEntity
 import io.tinychat.model.Fragment
 import io.tinychat.model.FragmentPayloadCodec
-import io.tinychat.model.FragmentType
 import io.tinychat.model.MessageStatus
 import io.tinychat.model.Usage
 import io.tinychat.net.LiveDelta
@@ -260,18 +259,13 @@ class ChatStreamRunner(
         val stopReason = assembler.stopReason
         val status = when {
             assembler.error != null -> MessageStatus.FAILED
-            // 拒答：按协议丢弃已下发的思考与正文，只保留工具块
+            // 拒答（决策 85）：已下发的思考与正文**保留**——模型通常已经说了一句拒绝的话，
+            // 以前按协议一刀切删掉，界面上就只剩一个没有回答的提问。回传上下文时整轮剔除，
+            // 那条规则在 ContextRebuilder 里，不靠删库实现。
             stopReason == StopReason.REFUSAL -> MessageStatus.CONTENT_FILTER
             stopReason == StopReason.MAX_TOKENS -> MessageStatus.INCOMPLETE
             assembler.sawMessageStop && stopReason != null -> MessageStatus.FINISHED
             else -> MessageStatus.INCOMPLETE
-        }
-
-        if (status == MessageStatus.CONTENT_FILTER) {
-            fragmentDao.deleteByTypes(
-                messageId,
-                listOf(FragmentType.THINK.wire, FragmentType.RESPONSE.wire),
-            )
         }
 
         assembler.thinkingSignature?.let { signature ->

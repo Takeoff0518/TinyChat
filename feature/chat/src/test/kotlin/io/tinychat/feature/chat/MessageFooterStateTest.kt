@@ -62,6 +62,22 @@ class MessageFooterStateTest {
     }
 
     @Test
+    fun `拒答 - 有正文时照给左三件与重新生成，永远没有继续生成`() {
+        val state = resolve(status = MessageStatus.CONTENT_FILTER)
+        assertTrue("模型说的话可以复制、可以分享", state.showActions)
+        assertTrue(state.showRegenerate)
+        assertFalse("拒答没有可续的半句", state.showContinue)
+    }
+
+    @Test
+    fun `拒答且一句话都没说 - 只留重新生成`() {
+        val state = resolve(status = MessageStatus.CONTENT_FILTER, hasText = false)
+        assertFalse(state.showActions)
+        assertTrue(state.showRegenerate)
+        assertFalse(state.showContinue)
+    }
+
+    @Test
     fun `历史回答 - 有左三件但没有重新生成与继续生成`() {
         val state = resolve(isLatest = false)
         assertTrue(state.showActions)

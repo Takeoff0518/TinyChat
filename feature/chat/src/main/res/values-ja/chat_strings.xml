@@ -116,6 +116,7 @@
     <string name="chat_recent_photo_number">最近の写真 %d</string>
     <string name="chat_recording_time_limit_reached">録音時間の上限に達しました。</string>
     <string name="chat_refusal">回答できませんでした。質問の言い方を変えてみてください。</string>
+    <string name="chat_refusal_notice">こんにちは。この質問には今はお答えできません。別の話題にしましょう。</string>
     <string name="chat_regenerate">再生成</string>
     <string name="chat_release_to_cancel">指を離してキャンセル</string>
     <string name="chat_release_to_send">指を離して送信</string>

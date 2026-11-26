@@ -142,6 +142,25 @@ class ContextRebuilderTest {
     }
 
     @Test
+    fun `拒答轮整轮跳过，模型说的拒绝话不回传（决策 85）`() {
+        val out = ContextRebuilder.build(
+            listOf(
+                user(1, "正常问题"),
+                assistant(2, "正常回答"),
+                user(3, "敏感问题"),
+                assistant(4, "抱歉，这个我没法帮。", status = MessageStatus.CONTENT_FILTER),
+                user(5, "下一个问题"),
+                assistant(6, "下一个回答"),
+            ),
+            currentReminder = null,
+        )
+        // 拒答的正文留在库里展示，但绝不能进上下文；提问一起丢掉，保持 user/assistant 交替
+        assertEquals(listOf("user", "assistant", "user", "assistant"), roles(out))
+        assertTrue(out.none { it.content.toString().contains("没法帮") })
+        assertTrue(out.none { it.content.toString().contains("敏感问题") })
+    }
+
+    @Test
     fun `服务端模板块不入上下文`() {
         val out = ContextRebuilder.build(
             listOf(

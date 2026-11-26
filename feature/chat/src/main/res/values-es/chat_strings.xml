@@ -116,6 +116,7 @@
     <string name="chat_recent_photo_number">Foto reciente %d</string>
     <string name="chat_recording_time_limit_reached">Se alcanzó el límite de grabación.</string>
     <string name="chat_refusal">No se pudo responder. Prueba a reformular el mensaje.</string>
+    <string name="chat_refusal_notice">Hola, no puedo responder a esta pregunta por ahora. Cambiemos de tema y hablemos de otra cosa.</string>
     <string name="chat_regenerate">Volver a generar</string>
     <string name="chat_release_to_cancel">Suelta para cancelar</string>
     <string name="chat_release_to_send">Suelta para enviar</string>

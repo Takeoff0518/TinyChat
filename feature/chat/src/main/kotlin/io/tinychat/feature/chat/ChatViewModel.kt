@@ -201,6 +201,13 @@ data class ChatMessage(
     val retryTargetId: Long? = null,
     /** 失败提示（灰字，右贴边），如「请检查网络后重试」 */
     val retryHint: String? = null,
+    /**
+     * 这一轮是**拒答**（`stop_reason=refusal` / `finish_reason=content_filter`，决策 85）。
+     *
+     * 拒答是有结果的结束，不是错误：有正文就照常渲染（模型通常已经说了一句拒绝的话），
+     * 什么都没有时界面补一句兜底文案——否则这一行会整条消失，变成一个切不过去的隐形版本。
+     */
+    val refused: Boolean = false,
     /** 这一轮的用量（M7）；用户消息为 null */
     val usage: Usage? = null,
     /** 这一轮的费用（微元），按落库时的时段算；没有 usage 为 null */
@@ -1763,7 +1770,10 @@ class ChatViewModel(
         }
 
         val timeline = buildTimeline(fragments.map { TimelineFragment(it.type, it.payload) })
-        if (text.isBlank() && timeline.isEmpty()) return null
+        // 拒答（决策 85）：模型一个字都没说时这一行也得存在，界面会补一句兜底文案。
+        // 否则它既渲染不出来又占着版本位——就是 P-048 那个「切过去一片空白、还退不出来」的死角。
+        val refused = message.status == MessageStatus.CONTENT_FILTER
+        if (text.isBlank() && timeline.isEmpty() && !refused) return null
 
         val seconds = fragments
             .filter { it.type == "THINK" }
@@ -1808,6 +1818,7 @@ class ChatViewModel(
                 (message.thinkingEnabled || timeline.isNotEmpty()),
             status = message.status,
             canContinue = canContinue,
+            refused = refused,
             usage = rowUsage,
             // 优先用落库时定格的费用（决策 47）；老数据按旧口径现算，数字不会因为这次改动跳一下
             costMicros = message.costMicros ?: rowUsage?.let { usage -> legacyCostMicros(message, usage) },
