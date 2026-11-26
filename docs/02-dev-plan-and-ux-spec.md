@@ -345,7 +345,7 @@ sealed interface WireEvent {
 | `server_tool_use(action=read_link)` → `web_fetch_tool_result(kind=read_link)` | `READ_LINK` | **必须原样保留 `signature`**，否则多轮丢网页上下文 |
 | `message_delta.title` | 会话标题 | 仅当会话无标题且本轮请求开启了 title |
 | `message_delta.usage` | 用量 | 以最后一个 `message_delta` 为准，**不要与 message_start 累加** |
-| `message_delta.stop_reason=refusal` | 丢弃已下发的 thinking/text，只保留工具块 | 协议要求 |
+| `message_delta.stop_reason=refusal` | 状态记 `CONTENT_FILTER`；**已下发的思考与正文保留**用于展示，回传上下文时整轮剔除（决策 85） | 模型说的拒绝话是结果不是错误，删了界面就只剩一个没有回答的提问 |
 
 ### 4.3 OpenAI 兼容适配（降级链路）
 
@@ -391,7 +391,7 @@ sealed interface WireEvent {
 | `http.5xx` | 服务端故障 | "服务器繁忙" | 指数退避**最多 2 次**（仅未收到内容时） |
 | `stream` | 流中 error 帧 | 展示服务端 message | 手动 |
 | `interrupted` | 流提前断开且无 stop_reason | "生成被中断" | 手动（可继续生成） |
-| `refusal` | `stop_reason=refusal` | 替换为拒答文案，丢弃已下发正文 | 不可重试 |
+| `refusal` | `stop_reason=refusal` / `finish_reason=content_filter` | 模型说了什么就显示什么（正文样式，可复制/朗读/分享）；一个字都没说时补一句兜底文案；**该轮不进上下文**，也不给继续生成 | 不可重试（再发一次还是拒），要给的是「重新生成」 |
 | `upload` | 附件上传失败 | "附件上传失败" + 重试 | 手动 |
 | `fileInvalid` | 服务端判 `file_id` 失效 | 自动重传后重发 | **自动最多 2 次**（退避 1s/2s） |
 | `contextLimit` | 客户端预判上下文 ≥95%，或服务端 400（`prompt is too long` 一类） | "当前对话已达上限，请开启新对话继续。" | 不可重试（再发一次结果一样） |
@@ -512,6 +512,16 @@ ASR 按小时、TTS 按字符计价，与 token 口径不同；混进费用会�
 
 好处不只是省一个版本位：失败那轮的 `error_kind` 被清掉后，橙色重试圆钮在重发时立刻消失，
 状态机不会出现「正在生成」与「上一次失败」并存的画面。
+
+**拒答不是空回答**（2026-11-26，决策 85）：`CONTENT_FILTER` 那一轮**也**可能零碎片
+（模型什么都没说、思考也没有），但它不该被接管、也不该被自愈清掉——拒答是有结果的结束。
+所以它自己在界面上占一行：模型说了什么就照常渲染（可复制、可朗读、可分享、可重新生成），
+只说了一句都没有时才显示兜底文案 `refusal.notice`。三条不变式：
+
+1. **必须有可见的行**：否则它又变成一个切不过去的隐形版本（P-048 的同一类死角）；
+2. **不进上下文**：由 `ContextRebuilder` 显式整轮剔除（提问一起去掉，保持 user/assistant 交替），
+   不靠「把正文删掉」实现；
+3. **不给重试、不给继续生成**：拒答没有可续的半句，重发同一句还是拒；出路是「重新生成」。
 
 
 **思考阶段被掐断怎么处理**（2026-11-18 定稿）：只显示「已停止」+ 折叠思维链，给「重新生成」，**不给「继续生成」**。
@@ -1437,7 +1447,7 @@ zh 主文案（en 在 M8 补齐）。**风格：短句、口语、不用感叹�
 | open.pages | 已浏览 {n} 个页面 |
 | find.keyword | 查找关键词 |
 | find.fail | 未查找到相关内容 |
-| refusal | 你好，这个问题我暂时无法回答，让我们换个话题再聊聊吧。 |
+| refusal.notice | 你好，这个问题我暂时无法回答，让我们换个话题再聊聊吧。（模型一个字都没说时的兜底；模型自己说的话按正文显示，不叠加这一句） |
 | error.network | 网络异常，请检查网络后重试 |
 | error.apiKey | API Key 无效或已被删除，请更换后重试 |
 | error.balance | 账户余额不足，请充值后重试 |

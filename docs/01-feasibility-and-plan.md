@@ -563,7 +563,7 @@ data class Capabilities(
 | **Android 14+ 后台生成限制** | 🟡 中低 | 生成中启动 FGS（`dataSync` 类型）或在前台停止并明确提示；不承诺后台长跑 |
 | **chat-demo 是移动靶** | 🟢 低 | 记录参考版本（commit）；逻辑自研为主 |
 | **API 变更/价格调整** | 🟢 低 | 价格表远程可配 + 内置默认值 |
-| **拒答语义**（`stop_reason: refusal`） | 🟢 低 | 已下发文本必须丢弃，替换为拒答文案（协议要求） |
+| **拒答语义**（`stop_reason: refusal`） | 🟢 低 | 状态单独记 `CONTENT_FILTER`：正文保留展示、该轮不进上下文（决策 85，原判断「必须丢弃」已作废） |
 
 ---
 
