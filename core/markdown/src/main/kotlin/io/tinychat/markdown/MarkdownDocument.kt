@@ -1,15 +1,16 @@
 package io.tinychat.markdown
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.mikepenz.markdown.compose.LocalBulletListHandler
-import com.mikepenz.markdown.compose.MarkdownElement
-import com.mikepenz.markdown.compose.components.MarkdownComponents
-import com.mikepenz.markdown.model.parseMarkdown
+import com.mikepenz.markdown.compose.Markdown
 import com.mikepenz.markdown.model.State
+import com.mikepenz.markdown.model.markdownAnimations
+import com.mikepenz.markdown.model.parseMarkdown
+import io.tinychat.designsystem.LocalTcFontScale
 import org.intellij.markdown.ast.ASTNode
 
 /**
@@ -21,52 +22,59 @@ import org.intellij.markdown.ast.ASTNode
  * 只有视口附近的几块真正参与排版。
  *
  * 切分规则只有一条：**按 GFM 的顶层块切**（段落、标题、列表、代码块、表格……），
- * 块内部的换行与嵌套不拆——每个块自己就是一个完整的渲染单元，偏移量都相对 [content]。
+ * 块内部的换行与嵌套不拆。
  */
-internal class MarkdownDocument(
-    /** 归一化之后的全文；[blocks] 里每个节点的起止偏移都相对它 */
-    val content: String,
-    val blocks: List<ASTNode>,
+class MarkdownDocument internal constructor(
+    /** 解析好的整篇状态：库的 `Markdown(state = …)` 靠它铺好一整套渲染环境 */
+    internal val state: State,
+    /** 归一化之后的全文；块里每个节点的起止偏移都相对它 */
+    internal val content: String,
+    internal val blocks: List<ASTNode>,
     /** 引用角标，偏移已经平移到 [content] 的坐标系 */
-    val citations: List<CitationAnchor>,
-)
+    internal val citations: List<CitationAnchor>,
+) {
+    /** 正文一共切成了几块——上层用它决定列表要铺几行 */
+    val blockCount: Int get() = blocks.size
+}
 
 /** 解析入口；解析结果按正文内容缓存，滚回来不再重解析 */
-internal fun markdownDocument(raw: String, citations: List<CitationAnchor>): MarkdownDocument {
+fun markdownDocument(raw: String, citations: List<CitationAnchor>): MarkdownDocument {
     val normalized = normalizeInlineMathDelimiters(raw)
     val content = stabilizeSetextMarkers(normalized.text).trimEnd('\n')
-    val blocks = parseBlocksCached(content)
+    val parsed = parseBlocksCached(content)
     val mapped = if (citations.isEmpty()) {
         citations
     } else {
         citations.map { CitationAnchor(normalized.mapOffset(it.offset), it.index) }
     }
-    return MarkdownDocument(content, blocks, mapped)
+    return MarkdownDocument(parsed.state, content, parsed.blocks, mapped)
 }
 
-private fun parseBlocksCached(content: String): List<ASTNode> =
+private class ParsedBlocks(val state: State, val blocks: List<ASTNode>)
+
+private fun parseBlocksCached(content: String): ParsedBlocks =
     MarkdownBlockCache.get(content) ?: run {
         val state = parseMarkdown(content)
         val blocks = (state as? State.Success)?.node?.children?.withoutEol().orEmpty()
-        MarkdownBlockCache.put(content, blocks)
-        blocks
+        ParsedBlocks(state, blocks).also { MarkdownBlockCache.put(content, it) }
     }
 
 /**
- * 渲染 [document] 里的一个块。
+ * 渲染 [document] 里的第 [index] 块。
  *
- * 每个块都是完整的渲染单元：行内公式、引用角标、行内代码画笔、列表符号都在这里就位，
- * 不依赖整条消息一起组合。调用方负责把块放进列表、并保证同一份 [document] 只解析一次。
+ * 环境仍走库自己的 `Markdown(state = …)`——它会铺好字体、颜色、间距、扩展样式那一整套
+ * `LocalMarkdown*`（少 provide 一个就是运行时崩溃），我们只在 `success` 里把这一块的节点
+ * 交给渲染，别的块既不组合也不排版。解析走上面的缓存，不会因为按块渲染而重解析。
  */
 @Composable
-internal fun TcMarkdownBlock(
+fun TcMarkdownBlock(
     document: MarkdownDocument,
-    block: ASTNode,
-    components: MarkdownComponents,
+    index: Int,
     citedSources: Int,
     onCitationClick: ((Int) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
+    val block = document.blocks.getOrNull(index) ?: return
     val inlineContent = citationInlineContent(document.citations, citedSources, onCitationClick)
     val withInlineCode = remember(document.content) { document.content.contains('`') }
     CompositionLocalProvider(
@@ -75,9 +83,21 @@ internal fun TcMarkdownBlock(
         LocalCitationAnchors provides document.citations,
         LocalCitationCount provides citedSources,
     ) {
-        Column(modifier = modifier) {
-            MarkdownElement(block, components, document.content, includeSpacer = false)
-        }
+        Markdown(
+            state = document.state,
+            colors = tcMarkdownColors(),
+            typography = tcMarkdownTypography(LocalTcFontScale.current),
+            padding = tcMarkdownPadding(),
+            dimens = tcMarkdownDimens(),
+            modifier = modifier.fillMaxWidth(),
+            components = tcMarkdownComponents(),
+            inlineContent = inlineContent,
+            extendedSpans = inlineCodeSpans(withInlineCode),
+            animations = markdownAnimations { this },
+            success = { _, components, mdModifier ->
+                RenderBlocks(listOf(block), document.content, components, mdModifier)
+            },
+        )
     }
 }
 
@@ -85,16 +105,16 @@ internal fun TcMarkdownBlock(
 private object MarkdownBlockCache {
     private const val MAX = 64
 
-    private val entries = object : LinkedHashMap<String, List<ASTNode>>(32, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<ASTNode>>?): Boolean =
+    private val entries = object : LinkedHashMap<String, ParsedBlocks>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ParsedBlocks>?): Boolean =
             size > MAX
     }
 
     @Synchronized
-    fun get(key: String): List<ASTNode>? = entries[key]
+    fun get(key: String): ParsedBlocks? = entries[key]
 
     @Synchronized
-    fun put(key: String, value: List<ASTNode>) {
+    fun put(key: String, value: ParsedBlocks) {
         entries[key] = value
     }
 }

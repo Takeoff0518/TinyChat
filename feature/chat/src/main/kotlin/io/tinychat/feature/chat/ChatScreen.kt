@@ -81,7 +81,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -121,7 +120,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -171,6 +169,8 @@ import io.tinychat.feature.chat.share.shareText
 import io.tinychat.markdown.CitationAnchor
 import io.tinychat.markdown.CitationBubbleShape
 import io.tinychat.markdown.TcMarkdown
+import io.tinychat.markdown.TcMarkdownBlock
+import io.tinychat.markdown.markdownDocument
 import io.tinychat.model.AttachmentState
 import io.tinychat.model.ErrorKind
 import io.tinychat.model.MessageStatus
@@ -539,23 +539,6 @@ private fun MessageList(
     onReadAloud: (ChatMessage) -> Unit,
 ) {
     val listState = rememberLazyListState()
-    // —— 临时埋点（取证用，取完删）：真实帧间隔，>=30ms 记一条 ——
-    DisposableEffect(Unit) {
-        val choreographer = android.view.Choreographer.getInstance()
-        val callback = object : android.view.Choreographer.FrameCallback {
-            private var last = 0L
-            override fun doFrame(frameTimeNanos: Long) {
-                if (last != 0L) {
-                    val dt = (frameTimeNanos - last) / 1_000_000
-                    if (dt >= 30) android.util.Log.i("tcperf2", "frame gap ${dt}ms")
-                }
-                last = frameTimeNanos
-                choreographer.postFrameCallback(this)
-            }
-        }
-        choreographer.postFrameCallback(callback)
-        onDispose { choreographer.removeFrameCallback(callback) }
-    }
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -633,6 +616,27 @@ private fun MessageList(
         derivedStateOf { shouldShowToBottom(following.value, listState.layoutInfo.isAtLatestBottom()) }
     }
 
+    // B-015（决策 83）：已结束的 AI 消息拆成「头 / 正文逐块 / 尾」三行，
+    // 由 LazyColumn 按需组合——长回答进屏时不再把整条 48 块一次量完。
+    val rows = remember(state.messages, state.liveMessageId) {
+        buildList {
+            for (message in state.messages) {
+                val single = message.isUser || message.status == MessageStatus.WIP
+                if (single || message.text.isBlank()) {
+                    add(ChatRow.Full(message))
+                    continue
+                }
+                val document = markdownDocument(
+                    message.text,
+                    message.anchors.map { CitationAnchor(it.anchor, it.index) },
+                )
+                add(ChatRow.Head(message))
+                repeat(document.blockCount) { index -> add(ChatRow.Block(message, index)) }
+                add(ChatRow.Tail(message))
+            }
+        }
+    }
+
     Box(modifier = modifier.fillMaxWidth()) {
         LazyColumn(
             state = listState,
@@ -640,9 +644,13 @@ private fun MessageList(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = 16.dp, end = 16.dp, top = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            // B-015：间距改由每一行自己带——消息之间 16dp，消息内部的块不额外加
+            // （块的段间距来自块自己的内边距），这样拆块前后的排版完全一致。
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            items(state.messages, key = { it.id }) { message ->
+            items(rows.size, key = { index -> rows[index].key }) { index ->
+                val row = rows[index]
+                val message = row.message
                 val isLatest = message.id == state.messages.lastOrNull()?.id
                 // 只有正在出字的那一条订阅实时快照，别的消息不跟着每帧重组
                 val snapshot = if (message.id == state.liveMessageId) {
@@ -670,8 +678,15 @@ private fun MessageList(
                 } else {
                     message
                 }
+                Column {
+                    // 消息之间 16dp，消息内部的块之间不加（块自带段间距）
+                    if (index > 0 && (row.part == MessagePart.FULL || row.part == MessagePart.HEAD)) {
+                        Spacer(Modifier.height(16.dp))
+                    }
                 MessageRow(
                     message = visibleMessage,
+                    part = row.part,
+                    blockIndex = (row as? ChatRow.Block)?.index ?: 0,
                     modifier = if (isNewPrompt) Modifier.graphicsLayer {
                         // Read the animation in the layer so the timeline keeps its measured layout.
                         val progress = promptProgress.value
@@ -708,6 +723,7 @@ private fun MessageList(
                     canReadAloud = state.supportsVoice,
                     onReadAloud = { onReadAloud(message) },
                 )
+                }
                 // 留白跟末条消息一起滚到底，避免另滚一段才到达底部。
                 if (isLatest) Spacer(Modifier.height(12.dp))
             }
@@ -768,11 +784,49 @@ private fun List<TimelineItem>.withLiveThinking(thinking: String?): List<Timelin
     }
 }
 
+
+/** 一条消息在列表里被拆成哪一段（B-015 / 决策 83）：正文按块拆开，只组合视口附近的块 */
+private enum class MessagePart { FULL, HEAD, BLOCK, TAIL }
+
+/** 列表里的一行：整条消息，或者消息的一段 */
+private sealed interface ChatRow {
+    val message: ChatMessage
+    val key: String
+
+    class Full(override val message: ChatMessage) : ChatRow {
+        override val key: String get() = "${message.id}-all"
+    }
+
+    class Head(override val message: ChatMessage) : ChatRow {
+        override val key: String get() = "${message.id}-head"
+    }
+
+    class Block(override val message: ChatMessage, val index: Int) : ChatRow {
+        override val key: String get() = "${message.id}-b$index"
+    }
+
+    class Tail(override val message: ChatMessage) : ChatRow {
+        override val key: String get() = "${message.id}-tail"
+    }
+}
+
+private val ChatRow.part: MessagePart
+    get() = when (this) {
+        is ChatRow.Full -> MessagePart.FULL
+        is ChatRow.Head -> MessagePart.HEAD
+        is ChatRow.Block -> MessagePart.BLOCK
+        is ChatRow.Tail -> MessagePart.TAIL
+    }
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun MessageRow(
     message: ChatMessage,
     modifier: Modifier = Modifier,
+    /** 这一行负责消息的哪一段（B-015）：正文按块拆成多条列表项 */
+    part: MessagePart = MessagePart.FULL,
+    /** part = BLOCK 时渲染正文的第几块 */
+    blockIndex: Int = 0,
     showUsage: Boolean,
     streaming: Boolean,
     /** 非空 = 这条正在实时出字，用它代替库里的正文（决策 74） */
@@ -945,22 +999,7 @@ private fun MessageRow(
     val context = LocalContext.current
     val res = LocalResources.current
     val scope = rememberCoroutineScope()
-    // —— 临时埋点（取证用，取完删）：测量/排版耗时 ——
-    val perfMeasure = remember(message.id) { IntArray(1) }
-
-    Box(modifier = Modifier.layout { measurable, constraints ->
-        val t0 = android.os.SystemClock.uptimeMillis()
-        val placeable = measurable.measure(constraints)
-        val dt = android.os.SystemClock.uptimeMillis() - t0
-        perfMeasure[0] += 1
-        if (dt >= 3) {
-            android.util.Log.i(
-                "tcperf2",
-                "measure id=${message.id} #${perfMeasure[0]} ${dt}ms h=${placeable.height}",
-            )
-        }
-        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-    }) {
+    Box {
         Column(modifier = Modifier.fillMaxWidth()) {
             // 长按只挂在这段内容区（思考块、正文、来源胶囊）。操作栏不在里面——
             // 以前整条消息都能触发，长按「复制」图标也会弹菜单。
@@ -972,8 +1011,10 @@ private fun MessageRow(
                     .combinedClickable(onClick = {}, onLongClick = { openMenuAtPress() }),
             ) {
                 // 空串不算「有思考」：思考关掉的会话不该挂一行「正在思考」（决策 80）
-                val tThinking = android.os.SystemClock.uptimeMillis()
-                if (message.hasThinking || message.isThinking || liveThinking?.isNotEmpty() == true) {
+                // B-015：拆成多行时，思维链只由 HEAD 那一行负责
+                if ((part == MessagePart.FULL || part == MessagePart.HEAD) &&
+                    (message.hasThinking || message.isThinking || liveThinking?.isNotEmpty() == true)
+                ) {
                     ThinkingBlock(
                         timeline = liveTimeline,
                         seconds = thinkingSeconds ?: message.thinkingSeconds,
@@ -986,33 +1027,46 @@ private fun MessageRow(
                         onOpenTool = { toolSheet = it },
                     )
                     Spacer(Modifier.height(8.dp))
-                    perfSec("thinking", tThinking)
                 }
 
-                if (bodyText.isNotBlank() || message.status == MessageStatus.WIP) {
-                    val tBody = android.os.SystemClock.uptimeMillis()
+                if ((part == MessagePart.FULL || part == MessagePart.BLOCK) &&
+                    (bodyText.isNotBlank() || message.status == MessageStatus.WIP)
+                ) {
                     // 先挂载正文，短回复在第一批正文和完成状态同时到来时也能逐步显示。
                     val isStreaming = message.status == MessageStatus.WIP || liveText != null
-                    TcMarkdown(
-                        content = bodyText,
-                        streaming = isStreaming,
-                        citations = message.anchors.map { CitationAnchor(it.anchor, it.index) },
-                        // 第三方搜索：正文里的 `[k]` 按来源条数换成角标
-                        citedSources = message.sources.size,
-                        onCitationClick = { index -> highlightedSource = index; sourcesOpen = true },
-                    )
-                    perfSec("body", tBody)
-                    val tCapsule = android.os.SystemClock.uptimeMillis()
-                    if (message.sources.isNotEmpty()) {
+                    if (part == MessagePart.BLOCK) {
+                        // B-015：这一行只渲染正文的第 blockIndex 块，别的块不组合、不排版
+                        val document = remember(bodyText) {
+                            markdownDocument(bodyText, message.anchors.map { CitationAnchor(it.anchor, it.index) })
+                        }
+                        TcMarkdownBlock(
+                            document = document,
+                            index = blockIndex,
+                            citedSources = message.sources.size,
+                            onCitationClick = { index -> highlightedSource = index; sourcesOpen = true },
+                        )
+                    } else {
+                        TcMarkdown(
+                            content = bodyText,
+                            streaming = isStreaming,
+                            citations = message.anchors.map { CitationAnchor(it.anchor, it.index) },
+                            // 第三方搜索：正文里的 `[k]` 按来源条数换成角标
+                            citedSources = message.sources.size,
+                            onCitationClick = { index -> highlightedSource = index; sourcesOpen = true },
+                        )
+                    }
+                    if (part != MessagePart.BLOCK && message.sources.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         SourceCapsule(
                             sources = message.sources,
                             onClick = { sourcesOpen = true },
                         )
                     }
-                    perfSec("capsule", tCapsule)
                 }
             }
+
+            // B-015：HEAD / BLOCK 这两行不渲染页脚、统计与面板，它们归 TAIL 行
+            if (part == MessagePart.FULL || part == MessagePart.TAIL) {
 
             // 操作栏（M2-9）按官方版式固定两行：
             //   第一行：复制/朗读/分享靠左贴边 …… 重新生成靠右贴边
@@ -1232,6 +1286,7 @@ private fun MessageRow(
             onDismiss = { shareResult = null },
         )
     }
+            }
 }
 
 /**
@@ -2976,8 +3031,3 @@ private fun createCameraUri(context: Context): Uri? {
     }.getOrNull()
 }
 
-/** 临时埋点（取证用，取完删）：分段组合耗时，小于 2ms 的不打 */
-private fun perfSec(name: String, startedAt: Long) {
-    val d = android.os.SystemClock.uptimeMillis() - startedAt
-    if (d >= 2) android.util.Log.i("tcperf2", "sec $name=${d}ms")
-}

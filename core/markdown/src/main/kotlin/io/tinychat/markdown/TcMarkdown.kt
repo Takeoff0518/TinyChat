@@ -12,7 +12,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
 import io.tinychat.designsystem.LocalTcFontScale
 import com.mikepenz.markdown.compose.LocalBulletListHandler
 import com.mikepenz.markdown.compose.Markdown
@@ -108,9 +107,7 @@ fun TcMarkdown(
     // 代价是这一帧多花解析的时间（7.4k 字符约 10–23ms），但省掉了中间那次空布局，
     // 而且换来的「高度不跳」正是列表不被顶走的前提。
     if (!streaming) {
-        val tParse = nowMs()
         val parsed = remember(target) { parseMarkdown(target) }
-        perfLog("parse n=${target.length}", nowMs() - tParse)
         CompositionLocalProvider(
             LocalBulletListHandler provides TcBulletHandler,
             LocalMarkdownStreaming provides false,
@@ -215,7 +212,7 @@ fun TcMarkdown(
 
 /** 只有含反引号时才挂圆角画笔，省掉其余消息的整条链路 */
 @Composable
-private fun inlineCodeSpans(enabled: Boolean) = if (enabled) {
+internal fun inlineCodeSpans(enabled: Boolean) = if (enabled) {
     markdownExtendedSpans {
         remember { ExtendedSpans(TcInlineCodePainter(fontSize = InlineCodeFontSize)) }
     }
@@ -224,33 +221,16 @@ private fun inlineCodeSpans(enabled: Boolean) = if (enabled) {
 }
 
 @Composable
-private fun RenderBlocks(
+internal fun RenderBlocks(
     blocks: List<ASTNode>,
     content: String,
     components: MarkdownComponents,
     modifier: Modifier,
 ) {
-    // —— 临时埋点（取证用，取完删）——
-    val tCompose = remember(blocks) { android.os.SystemClock.uptimeMillis() }
-    var logged by remember(blocks) { androidx.compose.runtime.mutableStateOf(false) }
-    Column(
-        modifier = modifier.onGloballyPositioned {
-            if (!logged) {
-                logged = true
-                perfLog("blocks-total n=${blocks.size}", android.os.SystemClock.uptimeMillis() - tCompose)
-            }
-        },
-    ) {
-        val byType = HashMap<String, LongArray>()
+    Column(modifier = modifier) {
         for (node in blocks) {
-            val t0 = android.os.SystemClock.uptimeMillis()
             MarkdownElement(node, components, content, includeSpacer = false)
-            val dt = android.os.SystemClock.uptimeMillis() - t0
-            val slot = byType.getOrPut(node.type.name) { LongArray(2) }
-            slot[0] += 1
-            slot[1] += dt
         }
-        perfLog("blocks " + byType.entries.joinToString(" ") { "${it.key}=${it.value[0]}/${it.value[1]}ms" })
     }
 }
 
@@ -260,7 +240,3 @@ internal fun List<ASTNode>.withoutEol(): List<ASTNode> =
 
 private fun nowMs(): Long = System.nanoTime() / 1_000_000
 
-/** 临时打点（取证用，取完删） */
-private fun perfLog(label: String, ms: Long = -1) {
-    android.util.Log.i("tcperf", if (ms < 0) label else "$label = ${ms}ms")
-}
