@@ -17,6 +17,7 @@ import io.tinychat.data.provider.ProviderStore
 import io.tinychat.model.AttachmentState
 import io.tinychat.model.Fragment
 import io.tinychat.model.BranchNode
+import io.tinychat.model.deepestLeaf
 import io.tinychat.model.Capabilities
 import io.tinychat.model.ErrorKind
 import io.tinychat.model.FragmentPayloadCodec
@@ -329,9 +330,52 @@ class ChatRepository(
         return id
     }
 
-    /** 启动时把上次被杀进程留下的 WIP 归为 INCOMPLETE（02 §4.6） */
+    /** 启动时把上次被杀进程留下的 WIP 归为 INCOMPLETE（02 §4.6），顺手清掉旧版本攒下的空回答版本（决策 84） */
     suspend fun recoverInterrupted() {
         db.messageDao().recoverWipAll()
+        healEmptyVersions()
+    }
+
+    /**
+     * 自愈（决策 84）：清掉「已经有真回答、却还挂着一个空回答」的提问下的那个空壳。
+     *
+     * 1.1.1 之前的版本里，断网那轮失败后再重试是**新挂一个兄弟**，于是库里留下
+     * `[空失败, 成功]`；切到空的那个版本是一片空白、还切不回来，指针也就卡在隐形节点上。
+     * 「空回答」指零碎片的 FAILED / INCOMPLETE（见 `MessageDao.emptyUnfinishedAssistants`），
+     * 不含任何内容，删掉不丢东西。
+     *
+     * 两条护栏：**唯一的孩子不删**（它还要当占位，[claimPlaceholder] 会接管）；
+     * 从来没有真回答的提问不动（那是纯失败，用户正等着重试）。
+     *
+     * @return 清掉的节点数
+     */
+    suspend fun healEmptyVersions(): Int {
+        val empty = db.messageDao().emptyUnfinishedAssistants()
+        if (empty.isEmpty()) return 0
+        var removed = 0
+        for (message in empty) {
+            val siblings = db.messageDao().children(message.parentId)
+                .filter { it.role == Role.ASSISTANT && it.id != message.id }
+            val answered = siblings.filter { sibling ->
+                sibling.status == FINISHED && db.fragmentDao().byMessage(sibling.id).isNotEmpty()
+            }
+            if (answered.isEmpty()) continue
+
+            val session = db.sessionDao().byId(message.sessionId)
+            val pointed = session?.currentMessageId == message.id
+            db.withTransaction {
+                db.messageDao().delete(message.id)
+                if (pointed) {
+                    // 指针原本卡在这个隐形节点上 → 挪到最新那条真回答所在分支的叶子
+                    val nodes = db.messageDao().allInSession(message.sessionId)
+                        .map { BranchNode(it.id, it.parentId, it.insertedAt) }
+                    val leaf = answered.maxByOrNull { it.insertedAt }?.id?.let { deepestLeaf(nodes, it) }
+                    if (leaf != null) db.sessionDao().setCurrentMessage(message.sessionId, leaf.id, clock())
+                }
+            }
+            removed++
+        }
+        return removed
     }
 
     /**
@@ -993,7 +1037,7 @@ class ChatRepository(
         try {
             val id = withContext(NonCancellable) {
                 db.withTransaction {
-                    val created = db.messageDao().insert(message)
+                    val created = claimPlaceholder(message) ?: db.messageDao().insert(message)
                     db.sessionDao().setCurrentMessage(message.sessionId, created, clock())
                     created
                 }.also { assistantId = it }
@@ -1004,6 +1048,57 @@ class ChatRepository(
             assistantId?.let { id -> withContext(NonCancellable) { db.messageDao().markInterrupted(id) } }
             throw e
         }
+    }
+
+    /**
+     * 接管同一条提问下「一句话都没吐出来」的那一轮（决策 84）。
+     *
+     * 不接管的话，每重试一次就多一个版本：断网重试会一路攒出 `‹ 2/2 ›`、`‹ 3/3 ›`，
+     * 而那些版本是零碎片的空壳——界面上渲染不出来，切过去是一片空白，还切不回来。
+     * 判据收得很紧：**零碎片**才算占位。想过一段再断的（有 THINK）、吐了一半的（有 RESPONSE）、
+     * 手动停止留下半截的，都是真版本，照旧留在 `‹ 2/3 ›` 里；拒答与导入的历史一律不碰。
+     *
+     * 进程被杀后留下的 INCOMPLETE 空壳同样接管（启动自愈把它归成 INCOMPLETE，但它一样是空的）。
+     *
+     * @return 被接管的节点 id；没有可接管的就是 null（调用方照常新建）
+     */
+    private suspend fun claimPlaceholder(message: MessageEntity): Long? {
+        if (message.role != Role.ASSISTANT) return null
+        val parentId = message.parentId ?: return null
+        val candidates = db.messageDao().children(parentId).filter {
+            it.role == Role.ASSISTANT &&
+                (it.status == MessageStatus.FAILED || it.status == MessageStatus.INCOMPLETE)
+        }
+        if (candidates.isEmpty()) return null
+        val empty = candidates.filter { db.fragmentDao().byMessage(it.id).isEmpty() }
+        val placeholder = empty.lastOrNull() ?: return null
+
+        // 老版本可能已经攒下好几个空壳：留最新的那个，其余一并清掉（它们本来就没有内容）
+        empty.filter { it.id != placeholder.id }.forEach { db.messageDao().delete(it.id) }
+        db.messageDao().update(
+            placeholder.copy(
+                status = MessageStatus.WIP,
+                thinkingEnabled = message.thinkingEnabled,
+                searchEnabled = message.searchEnabled,
+                effort = message.effort,
+                model = message.model,
+                providerId = message.providerId,
+                accumulatedTokenUsage = 0,
+                promptTokens = null,
+                cacheHitTokens = null,
+                completionTokens = null,
+                thinkingTokens = null,
+                safetyTokens = null,
+                searchCalls = null,
+                fetchCalls = null,
+                imageSearchCalls = null,
+                costMicros = null,
+                errorKind = null,
+                errorMessage = null,
+                thinkingSignature = null,
+            ),
+        )
+        return placeholder.id
     }
 
     private suspend fun withWebSearch(assistantId: Long, userText: String, provider: WebSearchProvider): String {

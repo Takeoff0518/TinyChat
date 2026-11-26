@@ -45,6 +45,25 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE session_id = :sessionId AND status = 'WIP'")
     suspend fun wipInSession(sessionId: String): List<MessageEntity>
 
+    /**
+     * 「空回答」（决策 84）：**一条碎片都没有**的未完成助手消息（失败，或进程被杀留下的 INCOMPLETE）。
+     *
+     * 这种节点界面上渲染不出任何东西（正文与时间轴都为空，整条被丢弃），
+     * 但它占着一个版本位，切过去就是死胡同。它们有两种归宿：被下一次生成接管复用，
+     * 或者在已经有真回答的分支里被自愈清掉。
+     *
+     * 判据必须是**零碎片**：想过一段再断的（有 THINK）、吐了一半的（有 RESPONSE）都是真版本，不能碰。
+     */
+    @Query(
+        """
+        SELECT * FROM messages
+        WHERE role = 'ASSISTANT' AND status IN ('FAILED', 'INCOMPLETE')
+          AND NOT EXISTS (SELECT 1 FROM fragments f WHERE f.message_id = messages.id)
+        ORDER BY inserted_at ASC, id ASC
+        """,
+    )
+    suspend fun emptyUnfinishedAssistants(): List<MessageEntity>
+
     /** 进程被杀后的自愈：所有残留 WIP 归为 INCOMPLETE（02 §4.6） */
     @Query("UPDATE messages SET status = 'INCOMPLETE' WHERE status = 'WIP'")
     suspend fun recoverWipAll(): Int
