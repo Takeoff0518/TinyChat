@@ -3,11 +3,20 @@ name: CI
 on:
   push:
     branches: [master, main]
+  # 2026-11-26：PR 也要跑。原来只写了 `pull_request:`，等于「任何 PR、任何事件都跑」，
+  # 看不出边界；显式指名目标分支之后，改坏别人的 PR 在合并前就能看到红灯，
+  # 而不是等合进 master 才发现。草稿 PR 打上「可评审」时会再跑一次（ready_for_review）。
   pull_request:
+    branches: [master, main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
+# 同一个 ref 的旧运行直接取消：连续推几版时不用等前面几条慢慢跑完。
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -44,8 +53,28 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # 2026-11-26：Robolectric 的 `android-all` jar **不走 Gradle 缓存**，它自己用
+      # MavenArtifactFetcher 往 `~/.m2` 下（一百多兆）。发 1.1.1 那天下午两次红灯都是它：
+      # 一次是插件仓库解析不到 Kotlin 插件，一次是 `MavenArtifactFetcher` 里的
+      # `HttpURLConnection` 抛 IOException，六个 Robolectric 用例整组报 classMethod FAILED。
+      # 缓存之后同一把 key 直接命中，不再每次去 Maven Central 现下。
+      # key 跟着 `libs.versions.toml` 走：升 Robolectric 版本就换一份新缓存，不会拿旧 jar 凑合。
+      - name: Cache Robolectric 依赖
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: |
+            robolectric-${{ runner.os }}-
+
       - name: Assemble + unit tests + lint
-        run: ./gradlew --no-daemon --stacktrace assembleDebug testDebugUnitTest lint
+        run: |
+          # 外网依赖偶发失败时重试一次：真错了第二遍照样挂（红得诚实），
+          # 只是网络抖一下就过的，不会浪费一轮排查。
+          ./gradlew --no-daemon --stacktrace assembleDebug testDebugUnitTest lint || {
+            echo "::warning::第一次构建失败，重跑一次"
+            ./gradlew --no-daemon assembleDebug testDebugUnitTest lint
+          }
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
