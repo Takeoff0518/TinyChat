@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import io.tinychat.designsystem.LocalTcFontScale
 import com.mikepenz.markdown.compose.LocalBulletListHandler
 import com.mikepenz.markdown.compose.Markdown
@@ -28,7 +29,7 @@ import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 
 /** 列表符号：库默认是 `"• "`（带一个空格），宽度随字号变化，和正文的空隙不好控 */
-private val TcBulletHandler = BulletHandler { _, _, _, _, _ -> "•" }
+internal val TcBulletHandler = BulletHandler { _, _, _, _, _ -> "•" }
 
 /**
  * 重建解析状态后要一次性补回的长度，落在安全的字符边界上。
@@ -107,7 +108,9 @@ fun TcMarkdown(
     // 代价是这一帧多花解析的时间（7.4k 字符约 10–23ms），但省掉了中间那次空布局，
     // 而且换来的「高度不跳」正是列表不被顶走的前提。
     if (!streaming) {
+        val tParse = nowMs()
         val parsed = remember(target) { parseMarkdown(target) }
+        perfLog("parse n=${target.length}", nowMs() - tParse)
         CompositionLocalProvider(
             LocalBulletListHandler provides TcBulletHandler,
             LocalMarkdownStreaming provides false,
@@ -227,15 +230,37 @@ private fun RenderBlocks(
     components: MarkdownComponents,
     modifier: Modifier,
 ) {
-    Column(modifier = modifier) {
+    // —— 临时埋点（取证用，取完删）——
+    val tCompose = remember(blocks) { android.os.SystemClock.uptimeMillis() }
+    var logged by remember(blocks) { androidx.compose.runtime.mutableStateOf(false) }
+    Column(
+        modifier = modifier.onGloballyPositioned {
+            if (!logged) {
+                logged = true
+                perfLog("blocks-total n=${blocks.size}", android.os.SystemClock.uptimeMillis() - tCompose)
+            }
+        },
+    ) {
+        val byType = HashMap<String, LongArray>()
         for (node in blocks) {
+            val t0 = android.os.SystemClock.uptimeMillis()
             MarkdownElement(node, components, content, includeSpacer = false)
+            val dt = android.os.SystemClock.uptimeMillis() - t0
+            val slot = byType.getOrPut(node.type.name) { LongArray(2) }
+            slot[0] += 1
+            slot[1] += dt
         }
+        perfLog("blocks " + byType.entries.joinToString(" ") { "${it.key}=${it.value[0]}/${it.value[1]}ms" })
     }
 }
 
 /** EOL 在 GFM 的 AST 里成对出现，渲染它们只会多出空 Spacer（还拖慢流式） */
-private fun List<ASTNode>.withoutEol(): List<ASTNode> =
+internal fun List<ASTNode>.withoutEol(): List<ASTNode> =
     if (any { it.type == MarkdownTokenTypes.EOL }) filter { it.type != MarkdownTokenTypes.EOL } else this
 
 private fun nowMs(): Long = System.nanoTime() / 1_000_000
+
+/** 临时打点（取证用，取完删） */
+private fun perfLog(label: String, ms: Long = -1) {
+    android.util.Log.i("tcperf", if (ms < 0) label else "$label = ${ms}ms")
+}

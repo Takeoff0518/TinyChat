@@ -81,6 +81,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -120,6 +121,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -537,6 +539,23 @@ private fun MessageList(
     onReadAloud: (ChatMessage) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    // —— 临时埋点（取证用，取完删）：真实帧间隔，>=30ms 记一条 ——
+    DisposableEffect(Unit) {
+        val choreographer = android.view.Choreographer.getInstance()
+        val callback = object : android.view.Choreographer.FrameCallback {
+            private var last = 0L
+            override fun doFrame(frameTimeNanos: Long) {
+                if (last != 0L) {
+                    val dt = (frameTimeNanos - last) / 1_000_000
+                    if (dt >= 30) android.util.Log.i("tcperf2", "frame gap ${dt}ms")
+                }
+                last = frameTimeNanos
+                choreographer.postFrameCallback(this)
+            }
+        }
+        choreographer.postFrameCallback(callback)
+        onDispose { choreographer.removeFrameCallback(callback) }
+    }
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -926,8 +945,22 @@ private fun MessageRow(
     val context = LocalContext.current
     val res = LocalResources.current
     val scope = rememberCoroutineScope()
+    // —— 临时埋点（取证用，取完删）：测量/排版耗时 ——
+    val perfMeasure = remember(message.id) { IntArray(1) }
 
-    Box {
+    Box(modifier = Modifier.layout { measurable, constraints ->
+        val t0 = android.os.SystemClock.uptimeMillis()
+        val placeable = measurable.measure(constraints)
+        val dt = android.os.SystemClock.uptimeMillis() - t0
+        perfMeasure[0] += 1
+        if (dt >= 3) {
+            android.util.Log.i(
+                "tcperf2",
+                "measure id=${message.id} #${perfMeasure[0]} ${dt}ms h=${placeable.height}",
+            )
+        }
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // 长按只挂在这段内容区（思考块、正文、来源胶囊）。操作栏不在里面——
             // 以前整条消息都能触发，长按「复制」图标也会弹菜单。
@@ -939,6 +972,7 @@ private fun MessageRow(
                     .combinedClickable(onClick = {}, onLongClick = { openMenuAtPress() }),
             ) {
                 // 空串不算「有思考」：思考关掉的会话不该挂一行「正在思考」（决策 80）
+                val tThinking = android.os.SystemClock.uptimeMillis()
                 if (message.hasThinking || message.isThinking || liveThinking?.isNotEmpty() == true) {
                     ThinkingBlock(
                         timeline = liveTimeline,
@@ -952,9 +986,11 @@ private fun MessageRow(
                         onOpenTool = { toolSheet = it },
                     )
                     Spacer(Modifier.height(8.dp))
+                    perfSec("thinking", tThinking)
                 }
 
                 if (bodyText.isNotBlank() || message.status == MessageStatus.WIP) {
+                    val tBody = android.os.SystemClock.uptimeMillis()
                     // 先挂载正文，短回复在第一批正文和完成状态同时到来时也能逐步显示。
                     val isStreaming = message.status == MessageStatus.WIP || liveText != null
                     TcMarkdown(
@@ -965,6 +1001,8 @@ private fun MessageRow(
                         citedSources = message.sources.size,
                         onCitationClick = { index -> highlightedSource = index; sourcesOpen = true },
                     )
+                    perfSec("body", tBody)
+                    val tCapsule = android.os.SystemClock.uptimeMillis()
                     if (message.sources.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         SourceCapsule(
@@ -972,6 +1010,7 @@ private fun MessageRow(
                             onClick = { sourcesOpen = true },
                         )
                     }
+                    perfSec("capsule", tCapsule)
                 }
             }
 
@@ -2935,4 +2974,10 @@ private fun createCameraUri(context: Context): Uri? {
     return runCatching {
         FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }.getOrNull()
+}
+
+/** 临时埋点（取证用，取完删）：分段组合耗时，小于 2ms 的不打 */
+private fun perfSec(name: String, startedAt: Long) {
+    val d = android.os.SystemClock.uptimeMillis() - startedAt
+    if (d >= 2) android.util.Log.i("tcperf2", "sec $name=${d}ms")
 }
